@@ -41,4 +41,5 @@ export interface IPartRepository {
   findAll(params: ListPartsParams): Promise<PaginatedResult<PartRecord>>
   create(data: CreatePartData): Promise<PartRecord>
   update(id: string, data: UpdatePartData): Promise<PartRecord>
+  softDelete(id: string): Promise<void>
 }

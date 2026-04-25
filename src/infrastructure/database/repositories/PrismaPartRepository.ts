@@ -62,4 +62,8 @@ export class PrismaPartRepository implements IPartRepository {
     const row = await prisma.part.update({ where: { id }, data })
     return toPartRecord(row)
   }
+
+  async softDelete(id: string): Promise<void> {
+    await prisma.part.update({ where: { id }, data: { isActive: false } })
+  }
 }

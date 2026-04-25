@@ -58,4 +58,8 @@ export class PrismaServiceRepository implements IServiceRepository {
     const row = await prisma.service.update({ where: { id }, data })
     return toServiceRecord(row)
   }
+
+  async softDelete(id: string): Promise<void> {
+    await prisma.service.update({ where: { id }, data: { isActive: false } })
+  }
 }

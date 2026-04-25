@@ -5,6 +5,7 @@ import { requireAuth } from '../middlewares/auth.middleware.js'
 import { PrismaServiceRepository } from '../../database/repositories/PrismaServiceRepository.js'
 import { CreateServiceUseCase } from '../../../application/use-cases/service/CreateServiceUseCase.js'
 import { UpdateServiceUseCase } from '../../../application/use-cases/service/UpdateServiceUseCase.js'
+import { DeleteServiceUseCase } from '../../../application/use-cases/service/DeleteServiceUseCase.js'
 import { GetServiceUseCase } from '../../../application/use-cases/service/GetServiceUseCase.js'
 import { ListServicesUseCase } from '../../../application/use-cases/service/ListServicesUseCase.js'
 
@@ -24,6 +25,7 @@ export async function serviceRoutes(app: FastifyInstance) {
   const repo = new PrismaServiceRepository()
   const createUC = new CreateServiceUseCase(repo)
   const updateUC = new UpdateServiceUseCase(repo)
+  const deleteUC = new DeleteServiceUseCase(repo)
   const getUC = new GetServiceUseCase(repo)
   const listUC = new ListServicesUseCase(repo)
 
@@ -122,6 +124,24 @@ export async function serviceRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return updateUC.execute(request.params.id, request.body)
+    },
+  )
+
+  typed.delete(
+    '/services/:id',
+    {
+      onRequest: [requireAuth],
+      schema: {
+        tags: ['Services'],
+        summary: 'Deletar serviço (soft delete)',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ id: z.string().uuid() }),
+        response: { 204: z.void() },
+      },
+    },
+    async (request, reply) => {
+      await deleteUC.execute(request.params.id)
+      return reply.status(204).send()
     },
   )
 }

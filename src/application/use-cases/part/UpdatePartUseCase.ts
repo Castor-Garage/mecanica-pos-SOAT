@@ -10,7 +10,7 @@ export class UpdatePartUseCase {
 
   async execute(id: string, data: UpdatePartData): Promise<PartRecord> {
     const part = await this.partRepo.findById(id)
-    if (!part) {
+    if (!part || !part.isActive) {
       throw new NotFoundError('Peça', id)
     }
     return this.partRepo.update(id, data)

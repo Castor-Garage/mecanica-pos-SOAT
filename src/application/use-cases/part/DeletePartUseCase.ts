@@ -1,17 +1,15 @@
-import type {
-  IPartRepository,
-  PartRecord,
-} from '../../../domain/part/repositories/IPartRepository.js'
+import type { IPartRepository } from '../../../domain/part/repositories/IPartRepository.js'
 import { NotFoundError } from '../../../shared/errors/AppError.js'
 
-export class GetPartUseCase {
+export class DeletePartUseCase {
   constructor(private readonly partRepo: IPartRepository) {}
 
-  async execute(id: string): Promise<PartRecord> {
+  async execute(id: string): Promise<void> {
     const part = await this.partRepo.findById(id)
     if (!part || !part.isActive) {
       throw new NotFoundError('Peça', id)
     }
-    return part
+
+    await this.partRepo.softDelete(id)
   }
 }

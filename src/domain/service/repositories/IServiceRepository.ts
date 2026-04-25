@@ -35,4 +35,5 @@ export interface IServiceRepository {
   findAll(params: ListServicesParams): Promise<PaginatedResult<ServiceRecord>>
   create(data: CreateServiceData): Promise<ServiceRecord>
   update(id: string, data: UpdateServiceData): Promise<ServiceRecord>
+  softDelete(id: string): Promise<void>
 }

@@ -5,6 +5,7 @@ import { requireAuth } from '../middlewares/auth.middleware.js'
 import { PrismaPartRepository } from '../../database/repositories/PrismaPartRepository.js'
 import { CreatePartUseCase } from '../../../application/use-cases/part/CreatePartUseCase.js'
 import { UpdatePartUseCase } from '../../../application/use-cases/part/UpdatePartUseCase.js'
+import { DeletePartUseCase } from '../../../application/use-cases/part/DeletePartUseCase.js'
 import { GetPartUseCase } from '../../../application/use-cases/part/GetPartUseCase.js'
 import { ListPartsUseCase } from '../../../application/use-cases/part/ListPartsUseCase.js'
 
@@ -26,6 +27,7 @@ export async function partRoutes(app: FastifyInstance) {
   const repo = new PrismaPartRepository()
   const createUC = new CreatePartUseCase(repo)
   const updateUC = new UpdatePartUseCase(repo)
+  const deleteUC = new DeletePartUseCase(repo)
   const getUC = new GetPartUseCase(repo)
   const listUC = new ListPartsUseCase(repo)
 
@@ -128,6 +130,24 @@ export async function partRoutes(app: FastifyInstance) {
     },
     async (request) => {
       return updateUC.execute(request.params.id, request.body)
+    },
+  )
+
+  typed.delete(
+    '/parts/:id',
+    {
+      onRequest: [requireAuth],
+      schema: {
+        tags: ['Parts'],
+        summary: 'Deletar peça (soft delete)',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ id: z.string().uuid() }),
+        response: { 204: z.void() },
+      },
+    },
+    async (request, reply) => {
+      await deleteUC.execute(request.params.id)
+      return reply.status(204).send()
     },
   )
 }

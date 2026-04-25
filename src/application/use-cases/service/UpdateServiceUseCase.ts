@@ -10,7 +10,7 @@ export class UpdateServiceUseCase {
 
   async execute(id: string, data: UpdateServiceData): Promise<ServiceRecord> {
     const service = await this.serviceRepo.findById(id)
-    if (!service) {
+    if (!service || !service.isActive) {
       throw new NotFoundError('Serviço', id)
     }
     return this.serviceRepo.update(id, data)
