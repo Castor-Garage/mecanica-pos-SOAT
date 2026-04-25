@@ -10,6 +10,12 @@ import {
 } from 'fastify-type-provider-zod'
 import { AppError } from '../../shared/errors/AppError.js'
 import { ZodError } from 'zod'
+import { authRoutes } from './routes/auth.routes.js'
+import { clientRoutes } from './routes/client.routes.js'
+import { vehicleRoutes } from './routes/vehicle.routes.js'
+import { serviceRoutes } from './routes/service.routes.js'
+import { partRoutes } from './routes/part.routes.js'
+import { serviceOrderRoutes } from './routes/service-order.routes.js'
 
 export function buildServer() {
   const app = Fastify({
@@ -68,6 +74,14 @@ export function buildServer() {
       deepLinking: false,
     },
   })
+
+  // Routes
+  app.register(authRoutes)
+  app.register(clientRoutes)
+  app.register(vehicleRoutes)
+  app.register(serviceRoutes)
+  app.register(partRoutes)
+  app.register(serviceOrderRoutes)
 
   // Health check
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
