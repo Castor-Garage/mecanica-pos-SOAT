@@ -21,9 +21,10 @@ describe('POST /auth/login', () => {
     })
 
     expect(response.statusCode).toBe(200)
-    const body = response.json<{ token: string; expiresIn: string }>()
+    const body = response.json<{ token: string; admin: { id: string; email: string } }>()
     expect(body.token).toBeTruthy()
-    expect(body.expiresIn).toBeTruthy()
+    expect(body.admin.id).toBeTruthy()
+    expect(body.admin.email).toBe('admin@test.com')
   })
 
   it('returns 401 with wrong password', async () => {

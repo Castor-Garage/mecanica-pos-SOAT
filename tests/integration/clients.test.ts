@@ -18,6 +18,7 @@ describe('Clients API', () => {
   const validCpfClient = {
     name: 'João Silva',
     document: '529.982.247-25',
+    documentType: 'CPF' as const,
     phone: '11999998888',
     email: 'joao@email.com',
   }
@@ -25,6 +26,7 @@ describe('Clients API', () => {
   const validCnpjClient = {
     name: 'Empresa ABC Ltda',
     document: '11.222.333/0001-81',
+    documentType: 'CNPJ' as const,
     phone: '1133334444',
     email: 'contato@empresa.com',
   }

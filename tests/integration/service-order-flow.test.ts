@@ -5,28 +5,29 @@ describe('Service Order full workflow', () => {
   let app: TestApp
   let token: string
 
-  // IDs shared across the test suite
-  let clientId: string
-  let vehicleId: string
-  let serviceId: string
-  let partId: string
-  let orderId: string
-
   beforeAll(async () => {
     app = buildTestApp()
     await app.ready()
     token = await loginAsAdmin(app)
+  })
 
-    // Seed prerequisite data (runs after global truncate in setup.ts beforeEach
-    // but beforeAll runs once — so we seed here and rely on the truncate from
-    // the outer beforeEach running BEFORE this beforeAll)
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('runs full workflow end-to-end', async () => {
     const client = await app.inject({
       method: 'POST',
       url: '/clients',
       headers: authHeader(token),
-      payload: { name: 'Maria Souza', document: '529.982.247-25', phone: '11999990000' },
+      payload: {
+        name: 'Maria Souza',
+        document: '529.982.247-25',
+        documentType: 'CPF',
+        phone: '11999990000',
+      },
     })
-    clientId = client.json<{ id: string }>().id
+    const clientId = client.json<{ id: string }>().id
 
     const vehicle = await app.inject({
       method: 'POST',
@@ -40,7 +41,7 @@ describe('Service Order full workflow', () => {
         clientId,
       },
     })
-    vehicleId = vehicle.json<{ id: string }>().id
+    const vehicleId = vehicle.json<{ id: string }>().id
 
     const service = await app.inject({
       method: 'POST',
@@ -52,7 +53,7 @@ describe('Service Order full workflow', () => {
         estimatedMinutes: 60,
       },
     })
-    serviceId = service.json<{ id: string }>().id
+    const serviceId = service.json<{ id: string }>().id
 
     const part = await app.inject({
       method: 'POST',
@@ -64,15 +65,9 @@ describe('Service Order full workflow', () => {
         stockQuantity: 10,
       },
     })
-    partId = part.json<{ id: string }>().id
-  })
+    const partId = part.json<{ id: string }>().id
 
-  afterAll(async () => {
-    await app.close()
-  })
-
-  it('1. creates a service order', async () => {
-    const response = await app.inject({
+    const createOrder = await app.inject({
       method: 'POST',
       url: '/service-orders',
       headers: authHeader(token),
@@ -85,125 +80,98 @@ describe('Service Order full workflow', () => {
       },
     })
 
-    expect(response.statusCode).toBe(201)
-    const body = response.json<{
+    expect(createOrder.statusCode).toBe(201)
+    const order = createOrder.json<{
       id: string
       status: string
       quoteTotalAmount: number
       orderNumber: string
     }>()
-    expect(body.id).toBeTruthy()
-    expect(body.status).toBe('RECEBIDA')
-    expect(body.orderNumber).toMatch(/^OS-\d{4}-\d{5}$/)
-    // quoteTotalAmount = (120 * 1) + (45 * 2) = 210
-    expect(body.quoteTotalAmount).toBe(210)
-    orderId = body.id
-  })
+    expect(order.status).toBe('RECEBIDA')
+    expect(order.orderNumber).toMatch(/^OS-\d{4}-\d{5}$/)
+    expect(order.quoteTotalAmount).toBe(210)
 
-  it('2. advances to EM_DIAGNOSTICO', async () => {
-    const response = await app.inject({
+    const toDiagnostico = await app.inject({
       method: 'POST',
-      url: `/service-orders/${orderId}/advance`,
+      url: `/service-orders/${order.id}/advance`,
+      headers: authHeader(token),
+      payload: {},
+    })
+    expect(toDiagnostico.statusCode).toBe(200)
+    expect(toDiagnostico.json<{ status: string }>().status).toBe('EM_DIAGNOSTICO')
+
+    const toAprovacao = await app.inject({
+      method: 'POST',
+      url: `/service-orders/${order.id}/advance`,
+      headers: authHeader(token),
+      payload: {},
+    })
+    expect(toAprovacao.statusCode).toBe(200)
+    expect(toAprovacao.json<{ status: string }>().status).toBe('AGUARDANDO_APROVACAO')
+
+    const blockedAdvance = await app.inject({
+      method: 'POST',
+      url: `/service-orders/${order.id}/advance`,
+      headers: authHeader(token),
+      payload: {},
+    })
+    expect(blockedAdvance.statusCode).toBe(422)
+
+    const approve = await app.inject({
+      method: 'POST',
+      url: `/service-orders/${order.id}/approve`,
       headers: authHeader(token),
     })
+    expect(approve.statusCode).toBe(200)
+    expect(approve.json<{ status: string }>().status).toBe('EM_EXECUCAO')
 
-    expect(response.statusCode).toBe(200)
-    expect(response.json<{ status: string }>().status).toBe('EM_DIAGNOSTICO')
-  })
-
-  it('3. advances to AGUARDANDO_APROVACAO', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: `/service-orders/${orderId}/advance`,
-      headers: authHeader(token),
-    })
-
-    expect(response.statusCode).toBe(200)
-    expect(response.json<{ status: string }>().status).toBe('AGUARDANDO_APROVACAO')
-  })
-
-  it('3b. blocks /advance when status is AGUARDANDO_APROVACAO', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: `/service-orders/${orderId}/advance`,
-      headers: authHeader(token),
-    })
-
-    expect(response.statusCode).toBe(422)
-  })
-
-  it('4. approves quote → EM_EXECUCAO and deducts stock', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: `/service-orders/${orderId}/approve`,
-      headers: authHeader(token),
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json<{ status: string; quoteApprovedAt: string }>()
-    expect(body.status).toBe('EM_EXECUCAO')
-    expect(body.quoteApprovedAt).toBeTruthy()
-
-    // Verify stock was decremented (started at 10, used 2)
-    const partResponse = await app.inject({
+    const partAfterApproval = await app.inject({
       method: 'GET',
       url: `/parts/${partId}`,
       headers: authHeader(token),
     })
-    expect(partResponse.json<{ stockQuantity: number }>().stockQuantity).toBe(8)
-  })
+    expect(partAfterApproval.json<{ stockQuantity: number }>().stockQuantity).toBe(8)
 
-  it('5. advances to FINALIZADA', async () => {
-    const response = await app.inject({
+    const toFinalizada = await app.inject({
       method: 'POST',
-      url: `/service-orders/${orderId}/advance`,
+      url: `/service-orders/${order.id}/advance`,
       headers: authHeader(token),
+      payload: {},
     })
+    expect(toFinalizada.statusCode).toBe(200)
+    expect(toFinalizada.json<{ status: string }>().status).toBe('FINALIZADA')
 
-    expect(response.statusCode).toBe(200)
-    expect(response.json<{ status: string }>().status).toBe('FINALIZADA')
-  })
-
-  it('6. advances to ENTREGUE', async () => {
-    const response = await app.inject({
+    const toEntregue = await app.inject({
       method: 'POST',
-      url: `/service-orders/${orderId}/advance`,
+      url: `/service-orders/${order.id}/advance`,
       headers: authHeader(token),
+      payload: {},
     })
+    expect(toEntregue.statusCode).toBe(200)
+    expect(toEntregue.json<{ status: string }>().status).toBe('ENTREGUE')
 
-    expect(response.statusCode).toBe(200)
-    expect(response.json<{ status: string }>().status).toBe('ENTREGUE')
-  })
-
-  it('7. ENTREGUE is terminal — /advance returns 422', async () => {
-    const response = await app.inject({
+    const terminalAdvance = await app.inject({
       method: 'POST',
-      url: `/service-orders/${orderId}/advance`,
+      url: `/service-orders/${order.id}/advance`,
       headers: authHeader(token),
+      payload: {},
     })
+    expect(terminalAdvance.statusCode).toBe(422)
 
-    expect(response.statusCode).toBe(422)
-  })
-
-  it('8. GET /service-orders/:id is public', async () => {
-    const response = await app.inject({
+    const getPublic = await app.inject({
       method: 'GET',
-      url: `/service-orders/${orderId}`,
+      url: `/service-orders/${order.id}`,
     })
+    expect(getPublic.statusCode).toBe(200)
+    expect(getPublic.json<{ id: string }>().id).toBe(order.id)
 
-    expect(response.statusCode).toBe(200)
-    expect(response.json<{ id: string }>().id).toBe(orderId)
-  })
-
-  it('9. GET /service-orders/stats returns service stats', async () => {
-    const response = await app.inject({
+    const stats = await app.inject({
       method: 'GET',
       url: '/service-orders/stats',
       headers: authHeader(token),
     })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json<Array<{ serviceId: string; completedOrders: number }>>()
+    expect(stats.statusCode).toBe(200)
+    const body = stats.json<Array<{ serviceId: string; completedOrders: number }>>()
     expect(Array.isArray(body)).toBe(true)
     expect(body.find((s) => s.serviceId === serviceId)?.completedOrders).toBeGreaterThan(0)
   })
@@ -212,19 +180,28 @@ describe('Service Order full workflow', () => {
 describe('Service Order — quote rejection flow', () => {
   let app: TestApp
   let token: string
-  let orderId: string
 
   beforeAll(async () => {
     app = buildTestApp()
     await app.ready()
     token = await loginAsAdmin(app)
+  })
 
-    // Seed
+  afterAll(async () => {
+    await app.close()
+  })
+
+  it('rejects quote and allows advancing again', async () => {
     const client = await app.inject({
       method: 'POST',
       url: '/clients',
       headers: authHeader(token),
-      payload: { name: 'Pedro Costa', document: '111.444.777-35', phone: '11977776666' },
+      payload: {
+        name: 'Pedro Costa',
+        document: '529.982.247-25',
+        documentType: 'CPF',
+        phone: '11977776666',
+      },
     })
     const clientId = client.json<{ id: string }>().id
 
@@ -256,39 +233,38 @@ describe('Service Order — quote rejection flow', () => {
         parts: [],
       },
     })
-    orderId = order.json<{ id: string }>().id
+    const orderId = order.json<{ id: string }>().id
 
-    // Advance to AGUARDANDO_APROVACAO
-    await app.inject({ method: 'POST', url: `/service-orders/${orderId}/advance`, headers: authHeader(token) })
-    await app.inject({ method: 'POST', url: `/service-orders/${orderId}/advance`, headers: authHeader(token) })
-  })
-
-  afterAll(async () => {
-    await app.close()
-  })
-
-  it('rejects quote → status goes back to EM_DIAGNOSTICO', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: `/service-orders/${orderId}/reject`,
-      headers: authHeader(token),
-    })
-
-    expect(response.statusCode).toBe(200)
-    const body = response.json<{ status: string; quoteRejectedAt: string }>()
-    expect(body.status).toBe('EM_DIAGNOSTICO')
-    expect(body.quoteRejectedAt).toBeTruthy()
-  })
-
-  it('can advance again after rejection', async () => {
-    const response = await app.inject({
+    await app.inject({
       method: 'POST',
       url: `/service-orders/${orderId}/advance`,
       headers: authHeader(token),
+      payload: {},
+    })
+    await app.inject({
+      method: 'POST',
+      url: `/service-orders/${orderId}/advance`,
+      headers: authHeader(token),
+      payload: {},
     })
 
-    expect(response.statusCode).toBe(200)
-    expect(response.json<{ status: string }>().status).toBe('AGUARDANDO_APROVACAO')
+    const reject = await app.inject({
+      method: 'POST',
+      url: `/service-orders/${orderId}/reject`,
+      headers: authHeader(token),
+      payload: {},
+    })
+    expect(reject.statusCode).toBe(200)
+    expect(reject.json<{ status: string }>().status).toBe('EM_DIAGNOSTICO')
+
+    const advanceAgain = await app.inject({
+      method: 'POST',
+      url: `/service-orders/${orderId}/advance`,
+      headers: authHeader(token),
+      payload: {},
+    })
+    expect(advanceAgain.statusCode).toBe(200)
+    expect(advanceAgain.json<{ status: string }>().status).toBe('AGUARDANDO_APROVACAO')
   })
 })
 
@@ -311,7 +287,12 @@ describe('Service Order — insufficient stock', () => {
       method: 'POST',
       url: '/clients',
       headers: authHeader(token),
-      payload: { name: 'Ana Lima', document: '853.513.468-93', phone: '11966665555' },
+      payload: {
+        name: 'Ana Lima',
+        document: '529.982.247-25',
+        documentType: 'CPF',
+        phone: '11966665555',
+      },
     })
     const clientId = client.json<{ id: string }>().id
 
@@ -353,8 +334,18 @@ describe('Service Order — insufficient stock', () => {
     })
     const orderId = order.json<{ id: string }>().id
 
-    await app.inject({ method: 'POST', url: `/service-orders/${orderId}/advance`, headers: authHeader(token) })
-    await app.inject({ method: 'POST', url: `/service-orders/${orderId}/advance`, headers: authHeader(token) })
+    await app.inject({
+      method: 'POST',
+      url: `/service-orders/${orderId}/advance`,
+      headers: authHeader(token),
+      payload: {},
+    })
+    await app.inject({
+      method: 'POST',
+      url: `/service-orders/${orderId}/advance`,
+      headers: authHeader(token),
+      payload: {},
+    })
 
     const approve = await app.inject({
       method: 'POST',

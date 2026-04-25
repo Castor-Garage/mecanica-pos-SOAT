@@ -88,6 +88,19 @@ export function buildServer() {
 
   // Global error handler
   app.setErrorHandler((error, _request, reply) => {
+    if ('validation' in error && Array.isArray(error.validation)) {
+      return reply.status(422).send({
+        type: 'https://httpstatuses.com/422',
+        title: 'Validation Error',
+        status: 422,
+        detail: 'Os dados fornecidos são inválidos',
+        errors: error.validation.map((e) => ({
+          field: String(e.instancePath ?? e.schemaPath ?? 'body').replace(/^\//, ''),
+          message: e.message,
+        })),
+      })
+    }
+
     if (error instanceof ZodError) {
       return reply.status(422).send({
         type: 'https://httpstatuses.com/422',

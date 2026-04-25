@@ -299,7 +299,7 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
       serviceId: r.serviceId,
       serviceName: r.serviceName,
       completedOrders: Number(r.completedOrders),
-      avgExecutionMinutes: r.avgExecutionMinutes ?? 0,
+      avgExecutionMinutes: Number(r.avgExecutionMinutes ?? 0),
     }))
   }
 }
