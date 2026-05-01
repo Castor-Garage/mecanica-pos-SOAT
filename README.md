@@ -1,6 +1,22 @@
-# Oficina Mecanica API
+# Oficina Castor's Mecanica API
 
-Backend MVP para gestao de oficina mecanica (clientes, veiculos, servicos, pecas e ordens de servico).
+Backend MVP para gestao de oficina mecanica (clientes, veiculos, servicos, pecas e ordens de servico). 
+
+Projeto desenvolvido para turma 2026 de SOAT - FIAP.
+
+### Membros do time:
+
+- Carlos henrique Furtado
+    - RM371256
+    - user disc: kmzsonequinha
+- Luis 
+    - RM370255
+    - user disc: _louizzz
+- Vitor Cruz dos Santos
+    - RM371411
+    - user disc: vsacz
+
+
 
 ## Stack
 
