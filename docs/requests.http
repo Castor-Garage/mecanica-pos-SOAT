@@ -1,0 +1,327 @@
+###############################################
+# Mecânica POS - API HTTP Requests
+# Arquivo para testar endpoints com REST Client
+###############################################
+
+# Variáveis Globais
+@baseUrl = http://localhost:3000
+@contentType = application/json
+@adminEmail = admin@oficina.com
+@adminPassword = Admin@123
+
+# Após fazer login, copie o token e coloque aqui
+@token = 
+
+###############################################
+# 🔐 AUTENTICAÇÃO
+###############################################
+
+### 1. Login Admin
+POST {{baseUrl}}/admin/login
+Content-Type: {{contentType}}
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+###############################################
+# 🏥 HEALTH CHECK
+###############################################
+
+### 2. Health Check
+GET {{baseUrl}}/health
+
+###############################################
+# 📋 SWAGGER/DOCS
+###############################################
+
+### 3. Swagger UI
+GET {{baseUrl}}/docs
+
+###############################################
+# 👥 CLIENTES
+###############################################
+
+### 4. Listar Clientes (paginado)
+GET {{baseUrl}}/clients?page=1&limit=10
+Authorization: Bearer {{token}}
+
+### 5. Buscar Cliente por ID
+GET {{baseUrl}}/clients/1
+Authorization: Bearer {{token}}
+
+### 6. Criar Cliente (Pessoa Física)
+POST {{baseUrl}}/clients
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "João da Silva",
+  "type": "PF",
+  "document": "12345678901",
+  "email": "joao@email.com",
+  "phone": "11999999999"
+}
+
+### 7. Criar Cliente (Pessoa Jurídica)
+POST {{baseUrl}}/clients
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "Oficina XYZ LTDA",
+  "type": "PJ",
+  "document": "12345678000190",
+  "email": "oficina@email.com",
+  "phone": "1133333333"
+}
+
+### 8. Atualizar Cliente
+PUT {{baseUrl}}/clients/1
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "João da Silva Atualizado",
+  "email": "novo-email@email.com",
+  "phone": "11988888888"
+}
+
+### 9. Deletar Cliente (Soft Delete)
+DELETE {{baseUrl}}/clients/1
+Authorization: Bearer {{token}}
+
+###############################################
+# 🚗 VEÍCULOS
+###############################################
+
+### 10. Listar Veículos
+GET {{baseUrl}}/vehicles?page=1&limit=10
+Authorization: Bearer {{token}}
+
+### 11. Buscar Veículo por ID
+GET {{baseUrl}}/vehicles/1
+Authorization: Bearer {{token}}
+
+### 12. Criar Veículo
+POST {{baseUrl}}/vehicles
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "clientId": "1",
+  "licensePlate": "ABC1234",
+  "brand": "Toyota",
+  "model": "Corolla",
+  "year": 2020,
+  "color": "Branco"
+}
+
+### 13. Atualizar Veículo
+PUT {{baseUrl}}/vehicles/1
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "brand": "Toyota",
+  "model": "Corolla",
+  "year": 2021,
+  "color": "Preto"
+}
+
+### 14. Deletar Veículo
+DELETE {{baseUrl}}/vehicles/1
+Authorization: Bearer {{token}}
+
+###############################################
+# 🔧 SERVIÇOS
+###############################################
+
+### 15. Listar Serviços
+GET {{baseUrl}}/services?page=1&limit=10
+Authorization: Bearer {{token}}
+
+### 16. Buscar Serviço por ID
+GET {{baseUrl}}/services/1
+Authorization: Bearer {{token}}
+
+### 17. Criar Serviço
+POST {{baseUrl}}/services
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "Revisão de Motor",
+  "description": "Revisão completa do motor incluindo óleo e filtros",
+  "basePrice": 150.00,
+  "estimatedHours": 2
+}
+
+### 18. Atualizar Serviço
+PUT {{baseUrl}}/services/1
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "Revisão de Motor Completa",
+  "description": "Revisão com diagnóstico",
+  "basePrice": 200.00,
+  "estimatedHours": 3
+}
+
+### 19. Deletar Serviço
+DELETE {{baseUrl}}/services/1
+Authorization: Bearer {{token}}
+
+###############################################
+# 🛠️ PEÇAS
+###############################################
+
+### 20. Listar Peças
+GET {{baseUrl}}/parts?page=1&limit=10
+Authorization: Bearer {{token}}
+
+### 21. Buscar Peça por ID
+GET {{baseUrl}}/parts/1
+Authorization: Bearer {{token}}
+
+### 22. Criar Peça
+POST {{baseUrl}}/parts
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "Filtro de Óleo",
+  "description": "Filtro de óleo original",
+  "partNumber": "FL-001",
+  "price": 35.00,
+  "quantity": 50,
+  "active": true
+}
+
+### 23. Atualizar Peça
+PUT {{baseUrl}}/parts/1
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "Filtro de Óleo Premium",
+  "description": "Filtro de óleo de qualidade superior",
+  "price": 45.00,
+  "quantity": 75
+}
+
+### 24. Deletar Peça
+DELETE {{baseUrl}}/parts/1
+Authorization: Bearer {{token}}
+
+###############################################
+# 📋 ORDENS DE SERVIÇO
+###############################################
+
+### 25. Listar Ordens de Serviço
+GET {{baseUrl}}/service-orders?page=1&limit=10
+Authorization: Bearer {{token}}
+
+### 26. Buscar Ordem de Serviço por ID
+GET {{baseUrl}}/service-orders/1
+Authorization: Bearer {{token}}
+
+### 27. Criar Ordem de Serviço
+POST {{baseUrl}}/service-orders
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "vehicleId": "1",
+  "clientId": "1",
+  "description": "Revisão completa do veículo",
+  "services": [
+    {
+      "serviceId": "1",
+      "quantity": 1
+    }
+  ],
+  "parts": [
+    {
+      "partId": "1",
+      "quantity": 2
+    }
+  ]
+}
+
+### 28. Aprovar Orçamento da OS
+PATCH {{baseUrl}}/service-orders/1/approve
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+### 29. Rejeitar Orçamento da OS
+PATCH {{baseUrl}}/service-orders/1/reject
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "reason": "Valor acima do orçamento do cliente"
+}
+
+### 30. Avançar Status da OS
+PATCH {{baseUrl}}/service-orders/1/advance
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+###############################################
+# 📊 ESTATÍSTICAS
+###############################################
+
+### 31. Obter Estatísticas de Serviços
+GET {{baseUrl}}/service-orders/stats/services
+Authorization: Bearer {{token}}
+
+###############################################
+# 📝 NOTAS DE USO
+###############################################
+
+# 1. PRIMEIRO PASSO: Fazer Login
+#    - Descomente a requisição de Login (linha ~32)
+#    - Execute-a (Ctrl+Alt+R ou clique em "Send Request")
+#    - Copie o token da resposta
+#    - Cole em "@token = " (linha ~13)
+
+# 2. DEPENDÊNCIAS ENTRE REQUISIÇÕES:
+#    - Cliente deve existir antes de criar Veículo
+#    - Veículo deve existir antes de criar Ordem de Serviço
+#    - Serviço e Peça devem existir antes de criar Ordem de Serviço
+
+# 3. FLUXO COMPLETO DE OS:
+#    a) Criar Cliente
+#    b) Criar Veículo (com clientId)
+#    c) Criar Serviços
+#    d) Criar Peças
+#    e) Criar Ordem de Serviço
+#    f) Aprovar Orçamento (PATCH /approve)
+#    g) Avançar Status (PATCH /advance) - múltiplas vezes até finalizar
+
+# 4. STATUS DA OS:
+#    - RECEBIDA (inicial)
+#    - EM_DIAGNOSTICO
+#    - AGUARDANDO_APROVACAO
+#    - APROVADO
+#    - EM_EXECUCAO
+#    - FINALIZADO
+#    - ENTREGUE
+
+# 5. PAGINAÇÃO:
+#    - page: número da página (começa em 1)
+#    - limit: itens por página
+
+# 6. SOFT DELETE:
+#    - DELETE não remove fisicamente
+#    - Registros ficam marcados como deletados
+#    - Não aparecem em listagens
+
+# 7. VALIDAÇÕES:
+#    - CPF/CNPJ: Validados automaticamente
+#    - Email: Formato validado
+#    - Placa de Veículo: Formato ABC1234 ou ABC-1234
+#    - Valores monetários: Precisão de 2 casas decimais
