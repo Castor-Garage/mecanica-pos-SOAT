@@ -1,0 +1,22 @@
+flowchart LR
+    C1[Comando: CriarOrdemServico] --> E1[Evento: OrdemServicoCriada]
+    E1 --> E2[Evento: OrcamentoGerado]
+
+    E2 --> C2[Comando: AvancarStatusOS]
+    C2 --> E3[Evento: StatusOSAlterado para EM_DIAGNOSTICO]
+    E3 --> C3[Comando: AvancarStatusOS]
+    C3 --> E4[Evento: StatusOSAlterado para AGUARDANDO_APROVACAO]
+
+    E4 --> C4[Comando: AprovarOrcamento]
+    C4 --> E5[Evento: OrcamentoAprovado]
+    E5 --> P1[Politica: BaixarEstoqueDasPecas]
+    P1 --> E6[Evento: EstoqueBaixado]
+    E6 --> E7[Evento: StatusOSAlterado para EM_EXECUCAO]
+    E7 --> C5[Comando: AvancarStatusOS]
+    C5 --> E8[Evento: OrdemServicoFinalizada]
+    E8 --> C6[Comando: AvancarStatusOS]
+    C6 --> E9[Evento: OrdemServicoEntregue]
+
+    E4 --> C7[Comando: RejeitarOrcamento]
+    C7 --> E10[Evento: OrcamentoRejeitado]
+    E10 --> E11[Evento: StatusOSAlterado para EM_DIAGNOSTICO]

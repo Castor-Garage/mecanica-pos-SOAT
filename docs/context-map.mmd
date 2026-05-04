@@ -1,0 +1,43 @@
+flowchart LR
+    subgraph Cadastro
+        C1[Cliente]
+        C2[Veiculo]
+        C3[Admin]
+    end
+
+    subgraph Catalogo
+        K1[Servico]
+        K2[Peca/Insumo]
+    end
+
+    subgraph Atendimento
+        A1[Abertura da OS]
+        A2[Identificacao Cliente/Veiculo]
+        A3[Descricao do Problema]
+    end
+
+    subgraph Execucao_OS
+        E1[Ordem de Servico]
+        E2[Orcamento]
+        E3[Aprovacao/Rejeicao]
+        E4[Execucao]
+        E5[Historico de Status]
+        E6[Entrega]
+    end
+
+    C1 --> A2
+    C2 --> A2
+    C3 --> A1
+
+    A1 --> E1
+    A2 --> E1
+    A3 --> E1
+
+    K1 --> E2
+    K2 --> E2
+
+    E1 --> E2
+    E2 --> E3
+    E3 --> E4
+    E4 --> E5
+    E5 --> E6

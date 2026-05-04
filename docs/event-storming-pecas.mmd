@@ -1,0 +1,42 @@
+%%{init: {"theme": "default"}}%%
+flowchart TD
+    subgraph CMD ["Comandos"]
+        C1[Cadastrar Peca]
+        C2[Atualizar Peca]
+        C3[Inativar Peca]
+        C4[Vincular Peca a OS]
+        C5[Dar Baixa no Estoque]
+    end
+
+    subgraph EVT ["Eventos de Dominio"]
+        E1([PecaCadastrada])
+        E2([PecaAtualizada])
+        E3([PecaInativada])
+        E4([PecaVinculadaAOS])
+        E5([EstoqueBaixado])
+        E6([EstoqueMinimoAtingido])
+    end
+
+    subgraph POL ["Regras de Negocio"]
+        P1{Preco e estoque obrigatorios}
+        P2{Nome nao pode ser duplicado}
+        P3{Peca inativa bloqueada na OS}
+        P4{Estoque insuficiente bloqueia}
+        P5{Notificar abaixo do minimo}
+    end
+
+    subgraph AGG ["Agregados / Leitura"]
+        A1[(Catalogo de Pecas)]
+        A2[(OS com Pecas)]
+        A3[(Alerta de Estoque Baixo)]
+    end
+
+    C1 --> P1 --> E1 --> A1
+    C1 --> P2
+    C2 --> E2 --> A1
+    C3 --> E3 --> A1
+    C4 --> P3 --> E4 --> A2
+    C4 --> P4
+    E4 --> C5
+    C5 --> E5 --> A1
+    E5 --> P5 --> E6 --> A3
