@@ -1,0 +1,102 @@
+erDiagram
+    Admin {
+        uuid id PK
+        string name
+        string email UK
+        string passwordHash
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    Client {
+        uuid id PK
+        string name
+        string document UK "CPF ou CNPJ"
+        string phone
+        string email
+        string address
+        boolean isActive
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    Vehicle {
+        uuid id PK
+        uuid clientId FK
+        string licensePlate UK
+        string brand
+        string model
+        int year
+        string color
+        boolean isActive
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    Service {
+        uuid id PK
+        string name
+        string description
+        decimal unitPrice
+        boolean isActive
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    Part {
+        uuid id PK
+        string name
+        string description
+        decimal unitPrice
+        int stockQuantity
+        int minStock
+        string unit
+        boolean isActive
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    ServiceOrder {
+        uuid id PK
+        string orderNumber UK
+        uuid clientId FK
+        uuid vehicleId FK
+        string status "RECEBIDA|EM_DIAGNOSTICO|AGUARDANDO_APROVACAO|EM_EXECUCAO|FINALIZADA|ENTREGUE"
+        text problemDescription
+        text diagnosis
+        decimal quoteTotalAmount
+        datetime quoteApprovedAt
+        datetime quoteRejectedAt
+        datetime startedAt
+        datetime completedAt
+        datetime deliveredAt
+        text technicianNotes
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    ServiceOrderItem {
+        uuid id PK
+        uuid serviceOrderId FK
+        uuid serviceId FK
+        string serviceName "snapshot no momento da OS"
+        int quantity
+        decimal unitPrice "snapshot no momento da OS"
+    }
+
+    ServiceOrderPart {
+        uuid id PK
+        uuid serviceOrderId FK
+        uuid partId FK
+        string partName "snapshot no momento da OS"
+        int quantity
+        decimal unitPrice "snapshot no momento da OS"
+    }
+
+    Client ||--o{ Vehicle : "possui"
+    Client ||--o{ ServiceOrder : "solicita"
+    Vehicle ||--o{ ServiceOrder : "submetido em"
+    ServiceOrder ||--o{ ServiceOrderItem : "contem"
+    ServiceOrder ||--o{ ServiceOrderPart : "utiliza"
+    Service ||--o{ ServiceOrderItem : "referenciado por"
+    Part ||--o{ ServiceOrderPart : "referenciado por"
