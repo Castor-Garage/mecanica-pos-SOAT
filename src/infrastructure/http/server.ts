@@ -36,6 +36,8 @@ export function buildServer() {
   // CORS
   app.register(fastifyCors, {
     origin: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 
   // JWT
