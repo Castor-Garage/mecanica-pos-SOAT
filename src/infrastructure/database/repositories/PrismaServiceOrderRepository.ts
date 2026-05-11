@@ -117,6 +117,11 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
     return row ? toRecord(row) : null
   }
 
+  async findByOrderNumber(orderNumber: string): Promise<ServiceOrderFullRecord | null> {
+    const row = await prisma.serviceOrder.findUnique({ where: { orderNumber }, include: fullInclude })
+    return row ? toRecord(row) : null
+  }
+
   async findAll(params: ListServiceOrdersParams): Promise<PaginatedResult<ServiceOrderRecord>> {
     const { page, perPage, skip, take } = normalizePagination(params)
 

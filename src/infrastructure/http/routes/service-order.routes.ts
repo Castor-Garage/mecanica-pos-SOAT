@@ -15,6 +15,7 @@ import { GetServiceOrderUseCase } from '../../../application/use-cases/service-o
 import { ListServiceOrdersUseCase } from '../../../application/use-cases/service-order/ListServiceOrdersUseCase.js'
 import { GetServiceStatsUseCase } from '../../../application/use-cases/service-order/GetServiceStatsUseCase.js'
 import { OSStatus } from '../../../domain/service-order/value-objects/OSStatus.js'
+import { NotFoundError } from '../../../shared/errors/AppError.js'
 
 const orderItemSchema = z.object({
   id: z.string().uuid(),
@@ -80,6 +81,24 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   const getUC = new GetServiceOrderUseCase(soRepo)
   const listUC = new ListServiceOrdersUseCase(soRepo)
   const statsUC = new GetServiceStatsUseCase(soRepo)
+
+  // public tracking by order number — no auth required
+  typed.get(
+    '/service-orders/track/:orderNumber',
+    {
+      schema: {
+        tags: ['Service Orders'],
+        summary: 'Acompanhar OS pelo número (público — cliente)',
+        params: z.object({ orderNumber: z.string().min(1) }),
+        response: { 200: orderFullSchema },
+      },
+    },
+    async (request) => {
+      const order = await soRepo.findByOrderNumber(request.params.orderNumber)
+      if (!order) throw new NotFoundError('Ordem de Serviço', request.params.orderNumber)
+      return order
+    },
+  )
 
   // stats must be registered before /:id to avoid route conflict
   typed.get(

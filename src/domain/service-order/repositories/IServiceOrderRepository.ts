@@ -66,6 +66,7 @@ export interface ServiceStatRecord {
 
 export interface IServiceOrderRepository {
   findById(id: string): Promise<ServiceOrderFullRecord | null>
+  findByOrderNumber(orderNumber: string): Promise<ServiceOrderFullRecord | null>
   findAll(params: ListServiceOrdersParams): Promise<PaginatedResult<ServiceOrderRecord>>
   create(data: CreateServiceOrderData): Promise<ServiceOrderFullRecord>
   updateStatus(
