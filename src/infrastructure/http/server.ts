@@ -1,4 +1,4 @@
-import Fastify from 'fastify'
+import Fastify, { type FastifyError } from 'fastify'
 import fastifyJwt from '@fastify/jwt'
 import fastifyCors from '@fastify/cors'
 import fastifySwagger from '@fastify/swagger'
@@ -89,7 +89,7 @@ export function buildServer() {
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))
 
   // Global error handler
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
     if ('validation' in error && Array.isArray(error.validation)) {
       return reply.status(422).send({
         type: 'https://httpstatuses.com/422',
