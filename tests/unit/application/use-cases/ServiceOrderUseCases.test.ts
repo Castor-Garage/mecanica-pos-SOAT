@@ -129,6 +129,7 @@ describe('Service Order Use Cases', () => {
   beforeEach(() => {
     mockServiceOrderRepo = {
       findById: vi.fn(),
+      findByOrderNumber: vi.fn(),
       findAll: vi.fn(),
       create: vi.fn(),
       updateStatus: vi.fn(),
@@ -428,6 +429,53 @@ describe('Service Order Use Cases', () => {
       vi.mocked(mockServiceOrderRepo.findById).mockResolvedValueOnce(mockServiceOrderRecord as any)
 
       await expect(useCase.execute('1')).rejects.toThrow(BusinessRuleError)
+    })
+  })
+
+  describe('ListServiceOrdersUseCase', () => {
+    it('deve retornar lista paginada de ordens de serviço', async () => {
+      const useCase = new ListServiceOrdersUseCase(mockServiceOrderRepo)
+      const paginatedResult = {
+        data: [mockServiceOrderRecord as unknown as ServiceOrderRecord],
+        meta: { total: 1, page: 1, perPage: 20, totalPages: 1 },
+      }
+      vi.mocked(mockServiceOrderRepo.findAll).mockResolvedValueOnce(paginatedResult)
+
+      const result = await useCase.execute({})
+
+      expect(result.data).toHaveLength(1)
+      expect(result.meta.total).toBe(1)
+      expect(mockServiceOrderRepo.findAll).toHaveBeenCalledWith({})
+    })
+
+    it('deve repassar filtros ao repositório', async () => {
+      const useCase = new ListServiceOrdersUseCase(mockServiceOrderRepo)
+      vi.mocked(mockServiceOrderRepo.findAll).mockResolvedValueOnce({
+        data: [],
+        meta: { total: 0, page: 1, perPage: 20, totalPages: 0 },
+      })
+
+      await useCase.execute({ status: OSStatus.RECEBIDA, clientId: 'client-1', page: 2, perPage: 10 })
+
+      expect(mockServiceOrderRepo.findAll).toHaveBeenCalledWith({
+        status: OSStatus.RECEBIDA,
+        clientId: 'client-1',
+        page: 2,
+        perPage: 10,
+      })
+    })
+
+    it('deve retornar lista vazia quando não há ordens', async () => {
+      const useCase = new ListServiceOrdersUseCase(mockServiceOrderRepo)
+      vi.mocked(mockServiceOrderRepo.findAll).mockResolvedValueOnce({
+        data: [],
+        meta: { total: 0, page: 1, perPage: 20, totalPages: 0 },
+      })
+
+      const result = await useCase.execute({})
+
+      expect(result.data).toHaveLength(0)
+      expect(result.meta.total).toBe(0)
     })
   })
 

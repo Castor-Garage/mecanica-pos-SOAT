@@ -16,6 +16,7 @@ import { vehicleRoutes } from './routes/vehicle.routes.js'
 import { serviceRoutes } from './routes/service.routes.js'
 import { partRoutes } from './routes/part.routes.js'
 import { serviceOrderRoutes } from './routes/service-order.routes.js'
+import { webhookRoutes } from './routes/webhook.routes.js'
 
 export function buildServer() {
   const app = Fastify({
@@ -84,6 +85,7 @@ export function buildServer() {
   app.register(serviceRoutes)
   app.register(partRoutes)
   app.register(serviceOrderRoutes)
+  app.register(webhookRoutes)
 
   // Health check
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))

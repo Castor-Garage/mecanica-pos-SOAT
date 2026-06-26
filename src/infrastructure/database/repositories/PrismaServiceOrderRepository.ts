@@ -13,7 +13,7 @@ import type { PaginatedResult } from '../../../shared/types/pagination.js'
 import { buildPaginationMeta, normalizePagination } from '../../../shared/types/pagination.js'
 import { prisma } from '../prisma/client.js'
 import { NotFoundError, InsufficientStockError } from '../../../shared/errors/AppError.js'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 const fullInclude = {
   client: { select: { id: true, name: true, document: true, phone: true } },
@@ -103,6 +103,46 @@ function toListRecord(row: {
   }
 }
 
+type RawServiceOrderRow = {
+  id: string
+  orderNumber: string
+  status: string
+  clientId: string
+  vehicleId: string
+  problemDescription: string | null
+  diagnosis: string | null
+  quoteTotalAmount: string | null
+  quoteApprovedAt: Date | null
+  quoteRejectedAt: Date | null
+  startedAt: Date | null
+  completedAt: Date | null
+  deliveredAt: Date | null
+  technicianNotes: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+function fromRawRow(row: RawServiceOrderRow): ServiceOrderRecord {
+  return {
+    id: row.id,
+    orderNumber: row.orderNumber,
+    status: row.status as OSStatus,
+    clientId: row.clientId,
+    vehicleId: row.vehicleId,
+    problemDescription: row.problemDescription,
+    diagnosis: row.diagnosis,
+    quoteTotalAmount: row.quoteTotalAmount != null ? Number(row.quoteTotalAmount) : null,
+    quoteApprovedAt: row.quoteApprovedAt,
+    quoteRejectedAt: row.quoteRejectedAt,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    deliveredAt: row.deliveredAt,
+    technicianNotes: row.technicianNotes,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
 function generateOrderNumber(): string {
   const year = new Date().getFullYear()
   const rand = Math.floor(Math.random() * 99999)
@@ -125,17 +165,61 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
   async findAll(params: ListServiceOrdersParams): Promise<PaginatedResult<ServiceOrderRecord>> {
     const { page, perPage, skip, take } = normalizePagination(params)
 
-    const where: Prisma.ServiceOrderWhereInput = {
-      ...(params.status ? { status: params.status } : {}),
-      ...(params.clientId ? { clientId: params.clientId } : {}),
+    const conditions: Prisma.Sql[] = []
+
+    // Default listing excludes FINALIZADA and ENTREGUE; a specific status filter overrides this
+    if (params.status) {
+      conditions.push(Prisma.sql`status::text = ${params.status}`)
+    } else {
+      conditions.push(Prisma.sql`status::text NOT IN ('FINALIZADA', 'ENTREGUE')`)
     }
 
-    const [rows, total] = await prisma.$transaction([
-      prisma.serviceOrder.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
-      prisma.serviceOrder.count({ where }),
-    ])
+    if (params.clientId) {
+      conditions.push(Prisma.sql`client_id = ${params.clientId}::uuid`)
+    }
 
-    return { data: rows.map(toListRecord), meta: buildPaginationMeta(total, page, perPage) }
+    const whereExpr = Prisma.join(conditions, ' AND ')
+
+    const rows = await prisma.$queryRaw<RawServiceOrderRow[]>`
+      SELECT
+        id::text,
+        order_number        AS "orderNumber",
+        status::text        AS status,
+        client_id::text     AS "clientId",
+        vehicle_id::text    AS "vehicleId",
+        problem_description AS "problemDescription",
+        diagnosis,
+        quote_total_amount  AS "quoteTotalAmount",
+        quote_approved_at   AS "quoteApprovedAt",
+        quote_rejected_at   AS "quoteRejectedAt",
+        started_at          AS "startedAt",
+        completed_at        AS "completedAt",
+        delivered_at        AS "deliveredAt",
+        technician_notes    AS "technicianNotes",
+        created_at          AS "createdAt",
+        updated_at          AS "updatedAt"
+      FROM service_orders
+      WHERE ${whereExpr}
+      ORDER BY
+        CASE status::text
+          WHEN 'EM_EXECUCAO'          THEN 1
+          WHEN 'AGUARDANDO_APROVACAO' THEN 2
+          WHEN 'EM_DIAGNOSTICO'       THEN 3
+          WHEN 'RECEBIDA'             THEN 4
+          ELSE 5
+        END ASC,
+        created_at ASC
+      LIMIT ${take} OFFSET ${skip}
+    `
+
+    const countResult = await prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*)::bigint AS count FROM service_orders WHERE ${whereExpr}
+    `
+
+    return {
+      data: rows.map(fromRawRow),
+      meta: buildPaginationMeta(Number(countResult[0].count), page, perPage),
+    }
   }
 
   async create(data: CreateServiceOrderData): Promise<ServiceOrderFullRecord> {
