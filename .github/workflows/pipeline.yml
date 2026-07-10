@@ -103,11 +103,28 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Atualizar kubeconfig para o EKS
         run: |
           aws eks update-kubeconfig \
             --region ${{ secrets.AWS_REGION }} \
             --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Aplicar namespace e banco de dados
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/postgres/
+
+      - name: Aplicar manifestos da aplicação
+        run: |
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
+          kubectl apply -f k8s/hpa.yaml
+          kubectl apply -f k8s/deployment.yaml
 
       - name: Atualizar imagem no deployment
         run: |
