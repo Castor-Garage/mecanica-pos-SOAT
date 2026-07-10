@@ -1,54 +1,120 @@
-# 🔧 Mecânica POS - API
+# Castor Garage API
 
-**Backend MVP** para gestão completa de oficina mecânica com controle de clientes, veículos, serviços, peças e ordens de trabalho.
+Backend para gestão completa de oficina mecânica com controle de clientes, veículos, serviços, peças e ordens de serviço.
 
-Projeto desenvolvido para a turma 2026 de **SOAT - FIAP** sob a metodologia **Clean Architecture** com alta cobertura de testes unitários.
+Projeto desenvolvido para a turma 2026 de **SOAT - FIAP** — **Fase 2: Infraestrutura Escalável**.
 
-## 👥 Membros do Time
+## Membros do Time
 
 | Nome | RM | Discord |
-|------|-----|---------|
+|------|----|---------|
 | Carlos Henrique Furtado | 371256 | kmzsonequinha |
 | Luiz Otávio Leitão | 370255 | _louizzz |
 | Vitor Cruz dos Santos | 371411 | vsacz |
 
+---
 
+## Objetivos da Fase 2
 
-## 📚 Funcionalidades
+Evoluir a aplicação da Fase 1 para garantir qualidade, resiliência e escalabilidade:
 
-### ✅ Módulos Implementados
+- Infraestrutura escalável com Kubernetes e auto-scaling (HPA)
+- Provisionamento automatizado via Terraform (AWS EKS + RDS)
+- CI/CD completo com GitHub Actions — testes, build, push e deploy automático
+- Containerização com Docker multi-stage otimizado
 
-- **Autenticação**: Sistema de login JWT para administradores
-- **Gestão de Clientes**: CRUD de clientes (PF/PJ) com validação de CPF/CNPJ
-- **Gestão de Veículos**: Cadastro e histórico de veículos por cliente
-- **Catálogo de Serviços**: CRUD de serviços com preço base e tempo estimado
-- **Catálogo de Peças**: CRUD de peças com controle de estoque
-- **Ordens de Serviço**: Fluxo completo de OS com status (Recebida → Finalizada → Entregue)
-- **Sistema de Aprovação**: Orçamentos que precisam aprovação antes da execução
-- **Estatísticas**: Dashboard com estatísticas de serviços executados
+---
 
-### 🔐 Controle de Acesso
+## Arquitetura
 
-- Autenticação obrigatória via JWT
-- Soft delete de registros (não apaga fisicamente)
-- Validação de integridade (veículo deve pertencer ao cliente)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        GitHub Actions CI/CD                      │
+│  push → test → build → push (ghcr.io) → deploy (EKS)           │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                    ┌───────▼────────┐
+                    │  AWS EKS       │
+                    │  Namespace:    │
+                    │  mecanica      │
+                    │                │
+                    │  ┌──────────┐  │
+                    │  │  HPA     │  │  min 2 / max 5 pods
+                    │  │ CPU >70% │  │  CPU ou Memória >80%
+                    │  └────┬─────┘  │
+                    │       │        │
+                    │  ┌────▼──────┐ │
+                    │  │Deployment │ │  2 réplicas
+                    │  │mecanica-  │ │  node:20-alpine
+                    │  │api        │ │  liveness /health
+                    │  └────┬──────┘ │
+                    │       │        │
+                    │  ┌────▼──────┐ │
+                    │  │ Service   │ │  ClusterIP :3000
+                    │  │ Ingress   │ │  /api → nginx
+                    │  └───────────┘ │
+                    │                │
+                    │  ┌──────────┐  │
+                    │  │ConfigMap │  │  NODE_ENV, PORT, HOST
+                    │  │Secret    │  │  JWT_SECRET, DATABASE_URL
+                    │  └──────────┘  │
+                    └───────┬────────┘
+                            │
+                    ┌───────▼────────┐
+                    │  AWS RDS       │
+                    │  PostgreSQL 16 │  db.t3.micro, single-AZ
+                    │  subnet privada│  SG restrito ao EKS
+                    └────────────────┘
 
-## 🏗️ Stack Tecnológico
+┌──────────────────────────────────────────┐
+│  Terraform — /infra                       │
+│  VPC (10.0.0.0/16, 2 AZs)               │
+│  ├── Public subnets  (NAT Gateway)       │
+│  ├── Private subnets (EKS nodes + RDS)  │
+│  ├── EKS 1.30 — t3.medium min2/max4     │
+│  └── RDS PostgreSQL 16 — db.t3.micro    │
+└──────────────────────────────────────────┘
+```
 
-- **Runtime**: Node.js + TypeScript
-- **Framework Web**: Fastify
-- **Banco de Dados**: PostgreSQL + Prisma ORM
-- **Testes**: Vitest (142 testes unitários ✅)
-- **Containerização**: Docker / Docker Compose
-- **Documentação**: Swagger/OpenAPI
+### Fluxo de deploy
 
-## 🏛️ Arquitetura
+```
+push main
+  └─ test          → npm ci + typecheck + vitest
+  └─ build         → docker build (valida imagem)
+  └─ push          → ghcr.io/castor-garage/mecanica-pos-soat:latest + :sha
+  └─ deploy        → aws eks update-kubeconfig
+                   → kubectl apply -f k8s/namespace.yaml
+                   → kubectl apply -f k8s/postgres/
+                   → kubectl apply -f k8s/
+                   → kubectl set image deployment/mecanica-api api=...:sha
+                   → kubectl rollout status
+```
 
-O projeto segue o padrão **Clean Architecture** com separação clara de responsabilidades:
+---
+
+## Stack
+
+| Camada | Tecnologia |
+|--------|-----------|
+| Runtime | Node.js 20 + TypeScript |
+| Framework | Fastify 5 |
+| ORM | Prisma 7 + PostgreSQL 16 |
+| Testes | Vitest (142 testes unitários) |
+| Container | Docker multi-stage (node:20-alpine) |
+| Orquestração | Kubernetes (EKS / minikube) |
+| IaC | Terraform (AWS VPC + EKS + RDS) |
+| CI/CD | GitHub Actions |
+| Registry | GitHub Container Registry (ghcr.io) |
+| Documentação | Swagger/OpenAPI em `/documentation` |
+
+---
+
+## Arquitetura da Aplicação (Clean Architecture)
 
 ```
 src/
-├── application/        # Use Cases - lógica de negócio
+├── application/        # Use Cases — lógica de negócio
 │   └── use-cases/
 │       ├── auth/
 │       ├── client/
@@ -56,260 +122,208 @@ src/
 │       ├── service/
 │       ├── vehicle/
 │       └── service-order/
-├── domain/            # Entidades e regras de negócio
+├── domain/             # Entidades e regras de domínio
 │   ├── admin/
 │   ├── client/
 │   ├── part/
 │   ├── service/
 │   ├── vehicle/
 │   └── service-order/
-├── infrastructure/    # Implementações técnicas
-│   ├── database/      # Prisma repositories
-│   └── http/          # Fastify routes & server
-└── shared/            # Código compartilhado
-    ├── errors/        # AppError, NotFoundError, etc
-    └── types/         # Tipos globais
+├── infrastructure/     # Implementações técnicas
+│   ├── database/       # Prisma repositories
+│   └── http/           # Fastify routes & server
+└── shared/             # Código compartilhado
+    ├── errors/
+    └── types/
 ```
 
-## 📊 Status dos Testes
+---
 
-✅ **142 testes unitários** em execução
-- 19 testes: Shared Errors
-- 4 testes: Auth Use Cases
-- 15 testes: Client Use Cases
-- 11 testes: Part Use Cases
-- 11 testes: Service Use Cases
-- 15 testes: Vehicle Use Cases
-- 23 testes: Service Order Use Cases
-- 44 testes: Domain Value Objects
+## Execução local
+
+### Pré-requisitos
+- Docker + Docker Compose
+- Node.js 20 (apenas para desenvolvimento sem Docker)
+
+### Com Docker Compose (recomendado)
 
 ```bash
-Test Files  11 passed (11)
-Tests       142 passed (142)
-Duration    ~350ms
+# Copiar e configurar variáveis de ambiente
+cp .env.example .env
+
+# Subir API + PostgreSQL
+docker compose up --build
+
+# API disponível em:
+# http://localhost:3000/health
+# http://localhost:3000/documentation
 ```
 
-## 🔧 Stack
-
-## 🚀 Como Rodar Local
-
-### 1) Iniciar o projeto
-
-Configurar `.env`:
+### Sem Docker (desenvolvimento)
 
 ```bash
 npm install
-```
 
-### 2) Subir banco de dados
-
-```bash
+# Subir apenas o banco
 docker compose up -d db
-```
 
-### 3) Migrar banco e iniciar API
-
-```bash
-npm run db:generate
+# Rodar migrações e iniciar
+npx prisma generate
 npm run db:migrate
 npm run dev
 ```
 
-API: `http://localhost:3000`
-Swagger: `http://localhost:3000/docs`
-Health: `http://localhost:3000/health`
+Credenciais padrão: `admin@oficina.com` / `Admin@123`
 
-### 4) (Opcional) Seed de admin
+---
+
+## Deploy em Kubernetes
+
+### Pré-requisitos
+- `kubectl` configurado (minikube ou EKS)
+- Imagem disponível no registry
+
+### Configurar secrets antes de aplicar
 
 ```bash
-npm run db:seed
+# Gerar valores base64
+echo -n 'seu-jwt-secret' | base64
+echo -n 'postgresql://user:pass@host:5432/mecanica_db' | base64
 ```
 
-Credenciais padrão (via `.env`):
-- email: `admin@oficina.com`
-- senha: `Admin@123`
+Editar `k8s/secret.yaml` com os valores gerados.
 
-## 🐳 Rodar com Docker (API + DB)
+### Aplicar manifests
 
 ```bash
-docker compose up --build
+# Namespace primeiro
+kubectl apply -f k8s/namespace.yaml
+
+# Banco de dados (StatefulSet PostgreSQL — uso local/minikube)
+kubectl apply -f k8s/postgres/
+
+# Aplicação
+kubectl apply -f k8s/
+
+# Verificar pods
+kubectl get pods -n mecanica
+
+# Testar via port-forward
+kubectl port-forward svc/mecanica-api 3000:3000 -n mecanica
+curl http://localhost:3000/health
 ```
 
-Backend vai subir na porta padrão `http://localhost:3000`.
+> Em produção (EKS), o `DATABASE_URL` no `k8s/secret.yaml` deve apontar para o endpoint do RDS.
 
-## 📡 Principais Endpoints
+---
 
-### 🔐 Autenticação
-- `POST /admin/login` - Login admin (retorna JWT)
+## Provisionamento com Terraform (AWS)
 
-### 👥 Clientes
-- `GET /clients` - Listar clientes (paginado)
-- `GET /clients/:id` - Buscar cliente por ID
-- `POST /clients` - Criar novo cliente
-- `PUT /clients/:id` - Atualizar cliente
-- `DELETE /clients/:id` - Deletar cliente (soft delete)
+### Pré-requisitos
+- Terraform >= 1.6
+- AWS CLI configurado (`aws configure`)
+- Bucket S3 para o state
 
-### 🚗 Veículos
-- `GET /vehicles` - Listar veículos
-- `GET /vehicles/:id` - Buscar veículo
-- `POST /vehicles` - Criar veículo
-- `PUT /vehicles/:id` - Atualizar veículo
-- `DELETE /vehicles/:id` - Deletar veículo
+### Recursos provisionados
 
-### 🔧 Serviços
-- `GET /services` - Listar serviços
-- `GET /services/:id` - Buscar serviço
-- `POST /services` - Criar serviço
-- `PUT /services/:id` - Atualizar serviço
-- `DELETE /services/:id` - Deletar serviço
+| Recurso | Configuração |
+|---------|-------------|
+| VPC | 10.0.0.0/16, 2 AZs, NAT Gateway |
+| EKS | v1.30, node group t3.medium (min 2 / max 4) |
+| RDS | PostgreSQL 16, db.t3.micro, single-AZ |
 
-### 🛠️ Peças
-- `GET /parts` - Listar peças
-- `GET /parts/:id` - Buscar peça
-- `POST /parts` - Criar peça
-- `PUT /parts/:id` - Atualizar peça
-- `DELETE /parts/:id` - Deletar peça
-
-### 📋 Ordens de Serviço
-- `GET /service-orders` - Listar OS
-- `GET /service-orders/:id` - Buscar OS
-- `POST /service-orders` - Criar OS
-- `PATCH /service-orders/:id/approve` - Aprovar orçamento
-- `PATCH /service-orders/:id/reject` - Rejeitar orçamento
-- `PATCH /service-orders/:id/advance` - Avançar status
-- `GET /service-orders/stats/services` - Estatísticas de serviços
-
-### 📊 Health Check
-- `GET /health` - Status da API
-- `GET /docs` - Swagger UI
-
-## ✅ Testes
-
-## ✅ Testes
-
-### Executar Testes
+### Aplicar
 
 ```bash
-# Apenas unitários (recomendado para CI/CD)
+cd infra
+
+terraform init \
+  -backend-config="bucket=SEU-BUCKET-STATE" \
+  -backend-config="key=mecanica/terraform.tfstate" \
+  -backend-config="region=us-east-1"
+
+terraform plan -var="db_password=SuaSenha"
+terraform apply -var="db_password=SuaSenha"
+
+# Configurar kubectl após apply
+aws eks update-kubeconfig --region us-east-1 --name mecanica-eks
+```
+
+Consulte `/infra/README.md` para instruções detalhadas.
+
+---
+
+## CI/CD — GitHub Actions
+
+### Secrets necessários no repositório
+
+| Secret | Descrição |
+|--------|-----------|
+| `AWS_ACCESS_KEY_ID` | Credencial AWS |
+| `AWS_SECRET_ACCESS_KEY` | Credencial AWS |
+| `AWS_REGION` | Ex: `us-east-1` |
+| `EKS_CLUSTER_NAME` | Nome do cluster (output do Terraform) |
+
+> `GITHUB_TOKEN` é fornecido automaticamente pelo GitHub Actions.
+
+### Jobs
+
+| Job | Trigger | O que faz |
+|-----|---------|-----------|
+| `test` | push + PR | typecheck + 142 testes unitários |
+| `build` | após test | build da imagem Docker |
+| `push` | push main | push para ghcr.io com tags `latest` e `sha` |
+| `deploy` | após push | aplica manifests K8s + rolling update no EKS |
+
+---
+
+## APIs
+
+Documentação interativa disponível em: `http://localhost:3000/documentation`
+
+### Endpoints principais
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| POST | `/auth/login` | Login admin (retorna JWT) |
+| GET | `/clients` | Listar clientes |
+| POST | `/clients` | Criar cliente |
+| GET | `/vehicles` | Listar veículos |
+| POST | `/vehicles` | Criar veículo |
+| GET | `/services` | Listar serviços |
+| GET | `/parts` | Listar peças |
+| POST | `/service-orders` | Abrir OS |
+| GET | `/service-orders` | Listar OS (ordenadas por prioridade de status) |
+| GET | `/service-orders/:id` | Consultar status da OS |
+| PATCH | `/service-orders/:id/approve` | Aprovar orçamento |
+| PATCH | `/service-orders/:id/reject` | Rejeitar orçamento |
+| PATCH | `/service-orders/:id/advance` | Avançar status |
+| POST | `/service-orders/webhook/status` | Atualização de status via email |
+| GET | `/health` | Health check |
+
+---
+
+## Testes
+
+```bash
+# Unitários (142 testes)
 npm test
 
-# Apenas unitários (mesmo resultado)
-npm run test:unit
-
-# Integração + Unitários (requer PostgreSQL rodando)
-npm run test:all
-
-# Cobertura de testes
+# Com cobertura
 npm run test:coverage
 
-# Modo watch (desenvolvimento)
-npm run test:watch
+# Integração (requer PostgreSQL rodando)
+npm run test:all
 ```
 
-## 📦 Scripts Disponíveis
+---
 
-```bash
-# Build & Execução
-npm run build           # Compilar TypeScript
-npm run dev            # Rodar em desenvolvimento com hot-reload
-npm start              # Executar build compilado
+## Vídeo demonstrativo
 
-# Banco de Dados
-npm run db:generate    # Gerar Prisma Client
-npm run db:migrate     # Migrar banco (desenvolvimento)
-npm run db:migrate:deploy  # Deploy de migrações (produção)
-npm run db:seed        # Popular admin padrão
-npm run db:studio      # UI do Prisma Studio
+> Link: _a ser adicionado após gravação_
 
-# Qualidade de Código
-npm run lint           # ESLint
-npm run lint:fix       # ESLint com auto-fix
-npm run typecheck      # TypeScript strict check
-```
+---
 
-## 🌍 Deployment
+## Entrega
 
-### Variáveis de Ambiente
-
-Criar arquivo `.env`:
-
-```env
-# Server
-PORT=3000
-HOST=0.0.0.0
-NODE_ENV=production
-
-# Database (PostgreSQL)
-DATABASE_URL=postgresql://user:password@host:port/database
-
-# JWT
-JWT_SECRET=sua-chave-secreta-super-segura
-
-# Admin Padrão
-ADMIN_EMAIL=admin@oficina.com
-ADMIN_PASSWORD=Admin@123
-```
-
-### Deploy em Produção
-
-1. **Build da aplicação**
-```bash
-npm run build
-```
-
-2. **Gerar Prisma Client**
-```bash
-npm run db:generate
-```
-
-3. **Executar migrações**
-```bash
-npm run db:migrate:deploy
-```
-
-4. **Seed de admin (primeira vez)**
-```bash
-npm run db:seed
-```
-
-5. **Iniciar o servidor**
-```bash
-npm start
-```
-
-### Usando Docker em Produção
-
-```bash
-docker build -t mecanica-api:latest .
-docker run -d -p 3000:3000 --env-file .env mecanica-api:latest
-```
-
-## 🛠️ Padrões de Desenvolvimento
-
-### Value Objects
-Classes imutáveis para validar regras de negócio (CPF, CNPJ, LicensePlate, OSStatus)
-
-### Repositories
-Abstrações para persistência em banco de dados
-
-### Use Cases
-Lógica de negócio isolada, testável e independente
-
-### Error Handling
-- `AppError`: Erro genérico com statusCode
-- `NotFoundError`: Recurso não encontrado (404)
-- `ConflictError`: Duplicidade de dados (409)
-- `UnauthorizedError`: Falha de autenticação (401)
-- `ValidationError`: Validação falhou (422)
-- `BusinessRuleError`: Violação de regra de negócio (422)
-
-## 📝 Convenções
-
-- **Nomes de arquivos**: PascalCase para classes, camelCase para utilitários
-- **Branches**: `feature/nome-feature`, `bugfix/nome-bug`
-- **Commits**: `feat:`, `fix:`, `test:`, `docs:`, `refactor:`
-- **Testes**: Um arquivo teste por módulo, suffix `.test.ts`
-
-## 📄 Licença
-
-Projeto Oficina Castor's Mecanica API - SOAT/2026
+Repositório compartilhado com o usuário **`soat-architecture`** no GitHub.
