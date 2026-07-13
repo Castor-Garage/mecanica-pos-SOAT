@@ -6,10 +6,30 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  IMAGE_NAME: ghcr.io/castor-garage/mecanica-pos-soat
+  KIND_CLUSTER: castor-garage
+  KIND_VERSION: v0.32.0
+
 jobs:
   test:
-    name: Testes unitários
+    name: Testes automatizados
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: workshop
+          POSTGRES_PASSWORD: workshop
+          POSTGRES_DB: mecanica_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workshop -d mecanica_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout code
@@ -33,23 +53,108 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
 
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: postgresql://workshop:workshop@localhost:5432/mecanica_test_db
+
   build:
-    name: Build da imagem Docker
+    name: Build e publicar imagem Docker
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: false
-          tags: castor-garage-api:${{ github.sha }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy no cluster Kubernetes (kind)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Provisionar cluster e banco de dados (Terraform)
+        working-directory: infra
+        run: |
+          terraform init
+          terraform apply -auto-approve -var="cluster_name=${KIND_CLUSTER}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Carregar imagem recem-publicada no cluster
+        run: |
+          docker pull "${IMAGE_NAME}:${GITHUB_SHA}"
+          kind load docker-image "${IMAGE_NAME}:${GITHUB_SHA}" --name "${KIND_CLUSTER}"
+
+      - name: Aplicar manifestos da API (k8s/api)
+        run: |
+          sed "s#${IMAGE_NAME}:latest#${IMAGE_NAME}:${GITHUB_SHA}#" k8s/api/deployment.yaml > /tmp/api-deployment.yaml
+          kubectl --context "kind-${KIND_CLUSTER}" apply -f k8s/api/service.yaml
+          kubectl --context "kind-${KIND_CLUSTER}" apply -f k8s/api/hpa.yaml
+          kubectl --context "kind-${KIND_CLUSTER}" apply -f /tmp/api-deployment.yaml
+
+      - name: Aguardar rollout
+        run: kubectl --context "kind-${KIND_CLUSTER}" -n castor-garage rollout status deployment/castor-garage-api --timeout=120s
+
+      - name: Smoke test (/health)
+        run: |
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:30080/health; then exit 0; fi
+            echo "aguardando API responder... ($i/15)"
+            sleep 4
+          done
+          echo "API nao respondeu a tempo" >&2
+          exit 1
+
+      - name: Status do HPA
+        run: kubectl --context "kind-${KIND_CLUSTER}" -n castor-garage get hpa
+
+      - name: Destruir cluster (cleanup do runner)
+        if: always()
+        working-directory: infra
+        run: terraform destroy -auto-approve -var="cluster_name=${KIND_CLUSTER}"

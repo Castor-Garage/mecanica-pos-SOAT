@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/YOUR_ORG/mecanica-api:latest
+          image: ghcr.io/castor-garage/mecanica-pos-soat:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 3000

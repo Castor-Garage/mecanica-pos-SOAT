@@ -94,6 +94,49 @@ src/
     └── types/
 ```
 
+## Arquitetura da Solucao (Fase 2)
+
+Componentes da aplicacao, infraestrutura provisionada e fluxo de deploy:
+
+```mermaid
+flowchart TB
+  Client["Cliente / Front-end"] -->|HTTP :30080| Svc
+
+  subgraph API["Arquitetura de codigo (Clean Architecture)"]
+    Routes["Routes"] --> UseCases["Use Cases"]
+    UseCases --> Domain["Domain"]
+    UseCases --> Repos["Prisma Repositories"]
+  end
+
+  API -. roda dentro de .-> Deploy
+
+  subgraph K8s["Kubernetes (kind - cluster local)"]
+    direction TB
+    CM["ConfigMap"] --> Deploy
+    Secret["Secret"] --> Deploy
+    HPA["HorizontalPodAutoscaler"] -. escala .-> Deploy["Deployment castor-garage-api (2-10 replicas)"]
+    Svc["Service NodePort :30080"] --> Deploy
+    Deploy --> PgSvc["Service postgres :5432"] --> PgDeploy["Deployment postgres"]
+  end
+
+  subgraph TF["Terraform (/infra)"]
+    T1["kind create cluster"] --> T2["instala metrics-server"] --> T3["aplica namespace/configmap/secret/postgres"]
+  end
+
+  T3 -. provisiona .-> K8s
+
+  subgraph CICD["CI/CD (GitHub Actions)"]
+    direction LR
+    J1["test"] --> J2["build"] --> J3["deploy"]
+  end
+
+  J3 -. publica nova imagem .-> Deploy
+```
+
+- **Terraform** (`/infra`) provisiona o cluster kind, o `metrics-server` (necessario para o HPA) e o banco de dados (namespace + configmap + secret + Postgres), reaproveitando os manifestos de `/k8s` como fonte unica de verdade.
+- **Kubernetes** (`/k8s`) mantem a API rodando com auto-scaling (HPA por CPU/memoria) e configuracao via ConfigMap/Secret.
+- **CI/CD** (`.github/workflows/pipeline.yml`) builda, testa, publica a imagem no GHCR e faz o deploy da nova versao no cluster a cada push em `main`.
+
 ## Como Rodar Local
 
 ### 1. Instalar dependencias
@@ -187,7 +230,59 @@ k8s/
 
 ## Provisionamento com Terraform (`/infra`)
 
-Scripts Terraform para provisionar o cluster Kubernetes e o banco de dados estao em `/infra`.
+Scripts Terraform para provisionar, localmente, o cluster Kubernetes (kind), o
+`metrics-server` (para o HPA funcionar) e o banco de dados. Pre-requisitos:
+Docker, [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation),
+`kubectl` e [Terraform](https://developer.hashicorp.com/terraform/install)
+>= 1.5.
+
+```bash
+cd infra
+terraform init
+terraform apply
+```
+
+Isso cria o cluster `castor-garage`, instala o `metrics-server` e aplica
+`k8s/namespace.yaml`, `k8s/configmap.yaml`, `k8s/secret.yaml` e
+`k8s/postgres/*.yaml`. Depois, publique a API (isso **nao** e feito pelo
+Terraform de proposito — fica a cargo do `kubectl apply` manual ou do job
+`deploy` do CI/CD, ver abaixo):
+
+```bash
+kubectl apply -f k8s/api/
+```
+
+Para destruir tudo (namespace + cluster kind):
+
+```bash
+cd infra
+terraform destroy
+```
+
+Detalhes de cada recurso em [`infra/README.md`](infra/README.md).
+
+## CI/CD (`.github/workflows/pipeline.yml`)
+
+Pipeline no GitHub Actions com 3 jobs encadeados, disparada em push/PR para
+`main`:
+
+1. **`test`** — instala dependencias, gera o Prisma Client, roda
+   `typecheck`, testes unitarios e testes de integracao (com um servico
+   `postgres:16-alpine` no runner).
+2. **`build`** — builda a imagem Docker e publica em
+   `ghcr.io/castor-garage/mecanica-pos-soat` (tags `latest` e `<sha>`).
+3. **`deploy`** (so em push para `main`) — instala `kind` e roda
+   `terraform apply` em `/infra` para subir um cluster efemero + banco de
+   dados no proprio runner, carrega a imagem recem-publicada com
+   `kind load docker-image`, aplica `k8s/api/`, aguarda o rollout, faz um
+   smoke test em `/health` e verifica o `HorizontalPodAutoscaler`. Ao final
+   (mesmo se algo falhar), roda `terraform destroy` para limpar o runner.
+
+Esse job de deploy existe para provar, a cada push, que a imagem publicada
+sobe de verdade em um cluster Kubernetes com banco de dados provisionado por
+Terraform. Para manter um ambiente **persistente** para demonstracao (video,
+uso manual), rode os mesmos passos localmente (secao acima) em vez de
+depender do cluster efemero do CI.
 
 ## Testes
 
