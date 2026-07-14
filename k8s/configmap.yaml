@@ -1,10 +1,13 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: mecanica-api-config
-  namespace: mecanica
+  name: castor-garage-config
+  namespace: castor-garage
 data:
-  NODE_ENV: "production"
   PORT: "3000"
   HOST: "0.0.0.0"
+  NODE_ENV: "production"
   JWT_EXPIRES_IN: "8h"
+  ADMIN_EMAIL: "admin@oficina.com"
+  POSTGRES_DB: "mecanica_db"
+  POSTGRES_USER: "workshop"

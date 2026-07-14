@@ -1,15 +1,15 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: mecanica-api
-  namespace: mecanica
+  name: castor-garage-api-hpa
+  namespace: castor-garage
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: mecanica-api
+    name: castor-garage-api
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 10
   metrics:
     - type: Resource
       resource:

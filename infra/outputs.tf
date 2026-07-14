@@ -1,19 +1,14 @@
-output "cluster_endpoint" {
-  description = "EKS cluster API endpoint"
-  value       = module.eks.cluster_endpoint
-}
-
 output "cluster_name" {
-  description = "EKS cluster name"
-  value       = module.eks.cluster_name
+  description = "Nome do cluster kind provisionado"
+  value       = var.cluster_name
 }
 
-output "rds_endpoint" {
-  description = "RDS PostgreSQL connection endpoint"
-  value       = aws_db_instance.postgres.endpoint
+output "kubectl_context" {
+  description = "Contexto kubectl a usar para falar com o cluster"
+  value       = local.kube_context
 }
 
-output "kubeconfig_command" {
-  description = "Command to configure kubectl for this cluster"
-  value       = "aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name}"
+output "api_url" {
+  description = "URL da API depois que k8s/api/ for aplicado (NodePort 30080 mapeado pelo kind)"
+  value       = "http://localhost:30080"
 }

@@ -1,29 +1,11 @@
-variable "region" {
-  description = "AWS region"
-  type        = string
-  default     = "us-east-1"
-}
-
 variable "cluster_name" {
-  description = "EKS cluster name"
+  description = "Nome do cluster kind provisionado localmente"
   type        = string
-  default     = "mecanica-eks"
+  default     = "castor-garage"
 }
 
-variable "db_username" {
-  description = "RDS PostgreSQL username"
+variable "k8s_dir" {
+  description = "Caminho para os manifestos Kubernetes de infraestrutura (namespace, configmap, secret, postgres). Os manifestos da API (k8s/api) NAO sao aplicados por aqui — isso e responsabilidade do pipeline de CI/CD."
   type        = string
-  default     = "workshop"
-}
-
-variable "db_password" {
-  description = "RDS PostgreSQL password (sensitive)"
-  type        = string
-  sensitive   = true
-}
-
-variable "db_name" {
-  description = "RDS PostgreSQL database name"
-  type        = string
-  default     = "mecanica_db"
+  default     = "../k8s"
 }

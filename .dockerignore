@@ -1,9 +1,13 @@
-node_modules/
-dist/
-.git/
+node_modules
+dist
+.git
 .env
 .env.local
 .env.test
-coverage/
 *.log
 .DS_Store
+coverage
+docs
+k8s
+README.md
+relatorio-vulnerabilidades.md
