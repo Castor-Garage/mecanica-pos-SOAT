@@ -1,0 +1,508 @@
+{
+  "info": {
+    "name": "Castor Garage API",
+    "description": "Collection completa da API da oficina mecânica (Tech Challenge Fase 2). Login em Auth > Login salva o token automaticamente em {{token}} para as demais requisições.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "castor-garage-api-collection"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:30080", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "clientId", "value": "", "type": "string" },
+    { "key": "vehicleId", "value": "", "type": "string" },
+    { "key": "serviceId", "value": "", "type": "string" },
+    { "key": "partId", "value": "", "type": "string" },
+    { "key": "orderId", "value": "", "type": "string" },
+    { "key": "orderNumber", "value": "OS-2026-00003", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "OpenAPI JSON",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/docs/json", "host": ["{{baseUrl}}"], "path": ["docs", "json"] },
+            "auth": { "type": "noauth" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) {",
+                  "  pm.collectionVariables.set('token', json.token);",
+                  "  console.log('token salvo em {{token}}');",
+                  "}",
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@oficina.com\",\n  \"password\": \"Admin@123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "auth": { "type": "noauth" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Service Orders",
+      "item": [
+        {
+          "name": "Track by order number (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/service-orders/track/{{orderNumber}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["service-orders", "track", "{{orderNumber}}"]
+            },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "List (com ordenação por status)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/service-orders?page=1&perPage=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["service-orders"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "perPage", "value": "20" },
+                { "key": "status", "value": "EM_EXECUCAO", "disabled": true },
+                { "key": "clientId", "value": "{{clientId}}", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Stats (tempo médio por serviço)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/service-orders/stats", "host": ["{{baseUrl}}"], "path": ["service-orders", "stats"] }
+          }
+        },
+        {
+          "name": "Create",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('orderId', json.id);",
+                  "  console.log('orderId salvo:', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{clientId}}\",\n  \"vehicleId\": \"{{vehicleId}}\",\n  \"problemDescription\": \"Barulho estranho ao frear\",\n  \"services\": [\n    { \"serviceId\": \"{{serviceId}}\", \"quantity\": 1 }\n  ],\n  \"parts\": [\n    { \"partId\": \"{{partId}}\", \"quantity\": 2 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/service-orders", "host": ["{{baseUrl}}"], "path": ["service-orders"] }
+          }
+        },
+        {
+          "name": "Get by id (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/service-orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["service-orders", "{{orderId}}"]
+            },
+            "auth": { "type": "noauth" }
+          }
+        },
+        {
+          "name": "Advance status",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Avançando etapa\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/service-orders/{{orderId}}/advance",
+              "host": ["{{baseUrl}}"],
+              "path": ["service-orders", "{{orderId}}", "advance"]
+            }
+          }
+        },
+        {
+          "name": "Approve budget",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/service-orders/{{orderId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["service-orders", "{{orderId}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Reject budget",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Cliente recusou o orçamento\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/service-orders/{{orderId}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["service-orders", "{{orderId}}", "reject"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Email status update (aprovação/rejeição/avanço)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"APROVAR {{orderNumber}}\",\n  \"body\": \"Cliente aprova o orçamento\",\n  \"from\": \"cliente@email.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/webhooks/email", "host": ["{{baseUrl}}"], "path": ["webhooks", "email"] },
+            "auth": { "type": "noauth" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastros",
+      "item": [
+        {
+          "name": "Clients",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/clients?page=1&perPage=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["clients"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "perPage", "value": "20" },
+                    { "key": "search", "value": "", "disabled": true }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  pm.collectionVariables.set('clientId', pm.response.json().id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Maria da Silva\",\n  \"document\": \"12345678909\",\n  \"documentType\": \"CPF\",\n  \"phone\": \"11999998888\",\n  \"email\": \"maria@email.com\",\n  \"address\": \"Rua das Flores, 123\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/clients", "host": ["{{baseUrl}}"], "path": ["clients"] }
+              }
+            },
+            {
+              "name": "Get by id",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{baseUrl}}/clients/{{clientId}}", "host": ["{{baseUrl}}"], "path": ["clients", "{{clientId}}"] }
+              }
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"phone\": \"11988887777\"\n}" },
+                "url": { "raw": "{{baseUrl}}/clients/{{clientId}}", "host": ["{{baseUrl}}"], "path": ["clients", "{{clientId}}"] }
+              }
+            },
+            {
+              "name": "Delete (soft delete)",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{baseUrl}}/clients/{{clientId}}", "host": ["{{baseUrl}}"], "path": ["clients", "{{clientId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vehicles",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/vehicles?page=1&perPage=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["vehicles"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "perPage", "value": "20" },
+                    { "key": "clientId", "value": "{{clientId}}", "disabled": true }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  pm.collectionVariables.set('vehicleId', pm.response.json().id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"licensePlate\": \"XYZ9876\",\n  \"brand\": \"Fiat\",\n  \"model\": \"Uno\",\n  \"year\": 2018,\n  \"color\": \"Prata\",\n  \"clientId\": \"{{clientId}}\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/vehicles", "host": ["{{baseUrl}}"], "path": ["vehicles"] }
+              }
+            },
+            {
+              "name": "Get by id",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{baseUrl}}/vehicles/{{vehicleId}}", "host": ["{{baseUrl}}"], "path": ["vehicles", "{{vehicleId}}"] }
+              }
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"color\": \"Preto\"\n}" },
+                "url": { "raw": "{{baseUrl}}/vehicles/{{vehicleId}}", "host": ["{{baseUrl}}"], "path": ["vehicles", "{{vehicleId}}"] }
+              }
+            },
+            {
+              "name": "Delete (soft delete)",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{baseUrl}}/vehicles/{{vehicleId}}", "host": ["{{baseUrl}}"], "path": ["vehicles", "{{vehicleId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Services",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/services?page=1&perPage=20&onlyActive=true",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["services"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "perPage", "value": "20" },
+                    { "key": "onlyActive", "value": "true" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  pm.collectionVariables.set('serviceId', pm.response.json().id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Troca de pastilhas de freio\",\n  \"description\": \"Substituição das pastilhas dianteiras\",\n  \"basePrice\": 150.0,\n  \"estimatedMinutes\": 60\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/services", "host": ["{{baseUrl}}"], "path": ["services"] }
+              }
+            },
+            {
+              "name": "Get by id",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{baseUrl}}/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["services", "{{serviceId}}"] }
+              }
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"basePrice\": 180.0\n}" },
+                "url": { "raw": "{{baseUrl}}/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["services", "{{serviceId}}"] }
+              }
+            },
+            {
+              "name": "Delete (soft delete)",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{baseUrl}}/services/{{serviceId}}", "host": ["{{baseUrl}}"], "path": ["services", "{{serviceId}}"] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Parts",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/parts?page=1&perPage=20&onlyActive=true",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["parts"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "perPage", "value": "20" },
+                    { "key": "onlyActive", "value": "true" }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 201) {",
+                      "  pm.collectionVariables.set('partId', pm.response.json().id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Pastilha de freio dianteira\",\n  \"description\": \"Jogo de pastilhas\",\n  \"unitPrice\": 89.9,\n  \"stockQuantity\": 50,\n  \"minStock\": 5,\n  \"unit\": \"un\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/parts", "host": ["{{baseUrl}}"], "path": ["parts"] }
+              }
+            },
+            {
+              "name": "Get by id",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "{{baseUrl}}/parts/{{partId}}", "host": ["{{baseUrl}}"], "path": ["parts", "{{partId}}"] }
+              }
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"stockQuantity\": 45\n}" },
+                "url": { "raw": "{{baseUrl}}/parts/{{partId}}", "host": ["{{baseUrl}}"], "path": ["parts", "{{partId}}"] }
+              }
+            },
+            {
+              "name": "Delete (soft delete)",
+              "request": {
+                "method": "DELETE",
+                "url": { "raw": "{{baseUrl}}/parts/{{partId}}", "host": ["{{baseUrl}}"], "path": ["parts", "{{partId}}"] }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
