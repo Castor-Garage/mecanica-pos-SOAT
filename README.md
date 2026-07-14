@@ -265,6 +265,18 @@ terraform destroy
 
 Detalhes de cada recurso em [`infra/README.md`](infra/README.md).
 
+### Track de produção (`/infra/aws`)
+
+Este projeto tem dois tracks de infraestrutura:
+
+- **`infra/`** (acima) — cluster kind local, provisionado automaticamente pelo CI/CD a cada push/PR.
+  Usado para desenvolvimento e demonstração.
+- **`infra/aws/`** — VPC + EKS + RDS PostgreSQL na AWS, para um ambiente de produção real. Provisionado
+  manualmente (não roda a cada push). Deploy da aplicação feito pelo workflow manual
+  `.github/workflows/deploy-production.yml` (aba Actions → Run workflow), contra os manifestos em
+  `k8s/aws/`. Pré-requisitos, variáveis e os secrets do GitHub necessários estão documentados em
+  [`infra/aws/README.md`](infra/aws/README.md).
+
 ## CI/CD (`.github/workflows/pipeline.yml`)
 
 Pipeline no GitHub Actions com 3 jobs encadeados, disparada em push/PR para
