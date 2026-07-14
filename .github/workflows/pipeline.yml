@@ -133,7 +133,10 @@ jobs:
 
       - name: Aplicar manifestos da API (k8s/api)
         run: |
-          sed "s#${IMAGE_NAME}:latest#${IMAGE_NAME}:${GITHUB_SHA}#" k8s/api/deployment.yaml > /tmp/api-deployment.yaml
+          sed \
+            -e "s#${IMAGE_NAME}:latest#${IMAGE_NAME}:${GITHUB_SHA}#" \
+            -e "s#imagePullPolicy: Always#imagePullPolicy: IfNotPresent#" \
+            k8s/api/deployment.yaml > /tmp/api-deployment.yaml
           kubectl --context "kind-${KIND_CLUSTER}" apply -f k8s/api/service.yaml
           kubectl --context "kind-${KIND_CLUSTER}" apply -f k8s/api/hpa.yaml
           kubectl --context "kind-${KIND_CLUSTER}" apply -f /tmp/api-deployment.yaml
