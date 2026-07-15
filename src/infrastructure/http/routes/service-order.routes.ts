@@ -14,6 +14,8 @@ import { RejectQuoteUseCase } from '../../../application/use-cases/service-order
 import { GetServiceOrderUseCase } from '../../../application/use-cases/service-order/GetServiceOrderUseCase.js'
 import { ListServiceOrdersUseCase } from '../../../application/use-cases/service-order/ListServiceOrdersUseCase.js'
 import { GetServiceStatsUseCase } from '../../../application/use-cases/service-order/GetServiceStatsUseCase.js'
+import { SendOrderByEmailUseCase } from '../../../application/use-cases/service-order/SendOrderByEmailUseCase.js'
+import { NodemailerEmailProvider } from '../../providers/email/NodemailerEmailProvider.js'
 import { OSStatus } from '../../../domain/service-order/value-objects/OSStatus.js'
 import { NotFoundError } from '../../../shared/errors/AppError.js'
 
@@ -81,6 +83,7 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   const getUC = new GetServiceOrderUseCase(soRepo)
   const listUC = new ListServiceOrdersUseCase(soRepo)
   const statsUC = new GetServiceStatsUseCase(soRepo)
+  const sendEmailUC = new SendOrderByEmailUseCase(soRepo, new NodemailerEmailProvider())
 
   // public tracking by order number — no auth required
   typed.get(
@@ -97,6 +100,59 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
       const order = await soRepo.findByOrderNumber(request.params.orderNumber)
       if (!order) throw new NotFoundError('Ordem de Serviço', request.params.orderNumber)
       return order
+    },
+  )
+
+  // public — client approves/rejects the quote from the tracking page
+  typed.post(
+    '/service-orders/track/:orderNumber/approve',
+    {
+      schema: {
+        tags: ['Service Orders'],
+        summary: 'Aprovar orçamento (público — cliente acompanha)',
+        params: z.object({ orderNumber: z.string().min(1) }),
+        response: { 200: orderFullSchema },
+      },
+    },
+    async (request) => {
+      const order = await soRepo.findByOrderNumber(request.params.orderNumber)
+      if (!order) throw new NotFoundError('Ordem de Serviço', request.params.orderNumber)
+      return approveUC.execute(order.id, 'cliente')
+    },
+  )
+
+  typed.post(
+    '/service-orders/track/:orderNumber/reject',
+    {
+      schema: {
+        tags: ['Service Orders'],
+        summary: 'Rejeitar orçamento (público — cliente acompanha)',
+        params: z.object({ orderNumber: z.string().min(1) }),
+        response: { 200: orderFullSchema },
+      },
+    },
+    async (request) => {
+      const order = await soRepo.findByOrderNumber(request.params.orderNumber)
+      if (!order) throw new NotFoundError('Ordem de Serviço', request.params.orderNumber)
+      return rejectUC.execute(order.id, 'cliente')
+    },
+  )
+
+  // public — send OS data by e-mail from the tracking page (address is not persisted)
+  typed.post(
+    '/service-orders/:id/send-email',
+    {
+      schema: {
+        tags: ['Service Orders'],
+        summary: 'Enviar dados da OS por e-mail (público — cliente)',
+        params: z.object({ id: z.string().uuid() }),
+        body: z.object({ email: z.string().email() }),
+        response: { 200: z.object({ message: z.string() }) },
+      },
+    },
+    async (request) => {
+      await sendEmailUC.execute(request.params.id, request.body.email)
+      return { message: 'E-mail enviado com sucesso' }
     },
   )
 

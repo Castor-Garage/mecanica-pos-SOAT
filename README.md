@@ -25,6 +25,8 @@ Evoluir a aplicação da Fase 1 incorporando práticas modernas de infraestrutur
 - Pipeline de **CI/CD** completa (build → testes → Docker → deploy K8s)
 - Qualidade de código com **Clean Architecture**, testes unitários e de integração
 - Atualização de status de OS via integração por **e-mail (webhook)**
+- Aprovação/rejeição de orçamento pelo próprio cliente, direto na tela pública de acompanhamento
+- Envio dos dados da OS por **e-mail** a partir da tela pública de acompanhamento (Nodemailer, com fallback automático para Ethereal em dev)
 
 ### Links
 
@@ -44,7 +46,8 @@ Evoluir a aplicação da Fase 1 incorporando práticas modernas de infraestrutur
 - **Catalogo de Servicos**: CRUD de servicos com preco base e tempo estimado
 - **Catalogo de Pecas**: CRUD de pecas com controle de estoque
 - **Ordens de Servico**: Fluxo completo de OS com status (Recebida → Finalizada → Entregue)
-- **Sistema de Aprovacao**: Orcamentos que precisam aprovacao antes da execucao
+- **Sistema de Aprovacao**: Orcamentos que precisam aprovacao antes da execucao — pelo painel admin ou diretamente pelo cliente na tela publica de acompanhamento
+- **Envio por E-mail**: cliente pode pedir o envio dos dados da OS (resumo, status, orcamento) para um e-mail informado na hora, sem persistir o endereco
 - **Estatisticas**: Dashboard com estatisticas de servicos executados
 
 ### Controle de Acesso
@@ -58,7 +61,8 @@ Evoluir a aplicação da Fase 1 incorporando práticas modernas de infraestrutur
 - **Runtime**: Node.js + TypeScript
 - **Framework Web**: Fastify
 - **Banco de Dados**: PostgreSQL + Prisma ORM
-- **Testes**: Vitest (142 testes unitarios)
+- **E-mail**: Nodemailer (SMTP configuravel; sem `SMTP_USER` cai automaticamente para uma conta de teste Ethereal)
+- **Testes**: Vitest (146 testes unitarios + 24 testes de integracao)
 - **Conteinizacao**: Docker / Docker Compose
 - **Orquestracao**: Kubernetes
 - **IaC**: Terraform
@@ -317,7 +321,7 @@ npm run test:all
 npm run test:coverage
 ```
 
-Status atual: **142 testes unitarios** passando.
+Status atual: **146 testes unitarios** e **24 testes de integracao** passando.
 
 ## Scripts Disponiveis
 
@@ -345,6 +349,15 @@ JWT_EXPIRES_IN=8h
 ADMIN_EMAIL=admin@oficina.com
 ADMIN_PASSWORD=Admin@123
 WEBHOOK_SECRET=token-opcional-para-webhook
+
+# SMTP (envio de dados da OS por e-mail). Deixe SMTP_USER vazio para usar
+# automaticamente uma conta de teste Ethereal (sem cadastro, so para dev).
+SMTP_HOST=sandbox.smtp.mailtrap.io
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=no-reply@oficina.com
 ```
 
 ## Principais Endpoints
@@ -382,12 +395,15 @@ WEBHOOK_SECRET=token-opcional-para-webhook
 
 ### Ordens de Servico
 - `GET /service-orders` — listagem com ordenacao por status (excluindo finalizadas/entregues)
-- `GET /service-orders/:id`
+- `GET /service-orders/:id` — publico (cliente acompanha)
 - `GET /service-orders/track/:orderNumber` — consulta publica por numero da OS
 - `POST /service-orders` — abertura de OS
-- `POST /service-orders/:id/approve` — aprovar orcamento
-- `POST /service-orders/:id/reject` — rejeitar orcamento
+- `POST /service-orders/:id/approve` — aprovar orcamento (autenticado)
+- `POST /service-orders/:id/reject` — rejeitar orcamento (autenticado)
 - `POST /service-orders/:id/advance` — avancar status
+- `POST /service-orders/:id/send-email` — publico; envia os dados da OS para um e-mail informado na hora (nao persistido)
+- `POST /service-orders/track/:orderNumber/approve` — publico; cliente aprova o orcamento pela tela de acompanhamento
+- `POST /service-orders/track/:orderNumber/reject` — publico; cliente rejeita o orcamento pela tela de acompanhamento
 - `GET /service-orders/stats` — estatisticas de servicos
 
 ### Webhook
