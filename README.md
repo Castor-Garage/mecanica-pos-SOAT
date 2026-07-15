@@ -261,6 +261,27 @@ terraform destroy
 
 Detalhes de cada recurso em [`infra/README.md`](infra/README.md).
 
+## Provisionamento na AWS Academy — EKS (`/infra/aws`)
+
+Modulo Terraform separado para subir um cluster **EKS real** na conta do
+AWS Academy Learner Lab (usado para o video demonstrativo do Tech Challenge).
+Reaproveita o `LabRole` da Academy como cluster role/node role (nao da pra
+criar IAM role nova no Academy), tageia as subnets default para o Service
+`LoadBalancer` da API funcionar, e aplica o mesmo banco de dados de `/k8s`.
+
+```bash
+cd infra/aws
+terraform init
+terraform apply -var="lab_role_arn=arn:aws:iam::<account-id>:role/LabRole"
+```
+
+Diferente do `kind` local, o cluster EKS **nao e criado/destruido a cada
+push** (levaria 15-25 min em cada sentido) — voce sobe uma vez, manualmente,
+antes de gravar o video, e o job `deploy` do pipeline so publica a nova
+imagem nele a cada push. Passo a passo completo (credenciais do Lab, secrets
+do GitHub, como derrubar tudo depois) em
+[`infra/aws/README.md`](infra/aws/README.md).
+
 ## CI/CD (`.github/workflows/pipeline.yml`)
 
 Pipeline no GitHub Actions com 3 jobs encadeados, disparada em push/PR para
@@ -271,18 +292,17 @@ Pipeline no GitHub Actions com 3 jobs encadeados, disparada em push/PR para
    `postgres:16-alpine` no runner).
 2. **`build`** — builda a imagem Docker e publica em
    `ghcr.io/castor-garage/mecanica-pos-soat` (tags `latest` e `<sha>`).
-3. **`deploy`** (so em push para `main`) — instala `kind` e roda
-   `terraform apply` em `/infra` para subir um cluster efemero + banco de
-   dados no proprio runner, carrega a imagem recem-publicada com
-   `kind load docker-image`, aplica `k8s/api/`, aguarda o rollout, faz um
-   smoke test em `/health` e verifica o `HorizontalPodAutoscaler`. Ao final
-   (mesmo se algo falhar), roda `terraform destroy` para limpar o runner.
+3. **`deploy`** (so em push para `main`) — autentica na AWS com as
+   credenciais temporarias do Academy Learner Lab (secrets do GitHub),
+   aponta o `kubectl` para o cluster EKS ja provisionado por
+   `infra/aws`, aplica `k8s/api/` com a tag da imagem do commit, aguarda o
+   rollout, descobre o hostname do Network Load Balancer, faz um smoke test
+   em `/health` e verifica o `HorizontalPodAutoscaler`.
 
-Esse job de deploy existe para provar, a cada push, que a imagem publicada
-sobe de verdade em um cluster Kubernetes com banco de dados provisionado por
-Terraform. Para manter um ambiente **persistente** para demonstracao (video,
-uso manual), rode os mesmos passos localmente (secao acima) em vez de
-depender do cluster efemero do CI.
+Esse job publica a nova versao a cada push num ambiente **persistente** na
+AWS — o cluster fica no ar entre execucoes, pronto pra usar no video
+demonstrativo (deploy, execucao do CI/CD, consumo das APIs, escalabilidade
+automatica).
 
 ## Testes
 

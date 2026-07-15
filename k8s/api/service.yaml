@@ -8,7 +8,7 @@ metadata:
 spec:
   selector:
     app: castor-garage-api
-  type: NodePort
+  type: LoadBalancer
   ports:
     - port: 3000
       targetPort: 3000

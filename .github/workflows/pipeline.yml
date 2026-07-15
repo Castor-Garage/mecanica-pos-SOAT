@@ -8,8 +8,8 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/castor-garage/mecanica-pos-soat
-  KIND_CLUSTER: castor-garage
-  KIND_VERSION: v0.32.0
+  EKS_CLUSTER: castor-garage
+  AWS_REGION: us-east-1
 
 jobs:
   test:
@@ -92,7 +92,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy no cluster Kubernetes (kind)
+    name: Deploy no cluster EKS (AWS Academy)
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -104,57 +104,55 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Install kind
-        run: |
-          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Provisionar cluster e banco de dados (Terraform)
-        working-directory: infra
-        run: |
-          terraform init
-          terraform apply -auto-approve -var="cluster_name=${KIND_CLUSTER}"
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      # O cluster EKS ja existe — provisionado uma unica vez via
+      # `infra/aws` (terraform apply), rodado manualmente antes da gravacao.
+      # Este job so publica a nova imagem nele, nao cria/destroi infra.
+      - name: Configurar credenciais AWS (sessao temporaria do Academy)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Carregar imagem recem-publicada no cluster
-        run: |
-          docker pull "${IMAGE_NAME}:${GITHUB_SHA}"
-          kind load docker-image "${IMAGE_NAME}:${GITHUB_SHA}" --name "${KIND_CLUSTER}"
+      - name: Apontar kubectl para o cluster EKS
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}"
 
       - name: Aplicar manifestos da API (k8s/api)
         run: |
           sed "s#${IMAGE_NAME}:latest#${IMAGE_NAME}:${GITHUB_SHA}#" k8s/api/deployment.yaml > /tmp/api-deployment.yaml
-          kubectl --context "kind-${KIND_CLUSTER}" apply -f k8s/api/service.yaml
-          kubectl --context "kind-${KIND_CLUSTER}" apply -f k8s/api/hpa.yaml
-          kubectl --context "kind-${KIND_CLUSTER}" apply -f /tmp/api-deployment.yaml
+          kubectl --context "${EKS_CLUSTER}" apply -f k8s/api/service.yaml
+          kubectl --context "${EKS_CLUSTER}" apply -f k8s/api/hpa.yaml
+          kubectl --context "${EKS_CLUSTER}" apply -f /tmp/api-deployment.yaml
 
       - name: Aguardar rollout
-        run: kubectl --context "kind-${KIND_CLUSTER}" -n castor-garage rollout status deployment/castor-garage-api --timeout=120s
+        run: kubectl --context "${EKS_CLUSTER}" -n castor-garage rollout status deployment/castor-garage-api --timeout=180s
+
+      - name: Descobrir hostname do LoadBalancer
+        id: lb
+        run: |
+          for i in $(seq 1 20); do
+            HOST=$(kubectl --context "${EKS_CLUSTER}" -n castor-garage get svc castor-garage-api -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            if [ -n "$HOST" ]; then
+              echo "hostname=$HOST" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "aguardando o Load Balancer provisionar... ($i/20)"
+            sleep 15
+          done
+          echo "Load Balancer nao ficou pronto a tempo" >&2
+          exit 1
 
       - name: Smoke test (/health)
         run: |
+          HOST="${{ steps.lb.outputs.hostname }}"
           for i in $(seq 1 15); do
-            if curl -sf http://localhost:30080/health; then exit 0; fi
+            if curl -sf "http://${HOST}:3000/health"; then exit 0; fi
             echo "aguardando API responder... ($i/15)"
-            sleep 4
+            sleep 10
           done
           echo "API nao respondeu a tempo" >&2
           exit 1
 
       - name: Status do HPA
-        run: kubectl --context "kind-${KIND_CLUSTER}" -n castor-garage get hpa
-
-      - name: Destruir cluster (cleanup do runner)
-        if: always()
-        working-directory: infra
-        run: terraform destroy -auto-approve -var="cluster_name=${KIND_CLUSTER}"
+        run: kubectl --context "${EKS_CLUSTER}" -n castor-garage get hpa
