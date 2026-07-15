@@ -14,6 +14,7 @@ Projeto desenvolvido para a turma 2026 de **SOAT - FIAP** sob a metodologia **Cl
 
 ---
 
+
 ## Fase 2 — Qualidade, Resiliência e Escalabilidade
 
 ### Objetivos
