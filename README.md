@@ -359,7 +359,14 @@ SMTP_SECURE=false
 SMTP_USER=
 SMTP_PASS=
 SMTP_FROM=no-reply@oficina.com
+
+# Nivel dos logs JSON (fora de development). Padrao: info
+LOG_LEVEL=info
 ```
+
+## Observabilidade
+
+Fora de `development`, a API escreve logs em JSON (uma linha por log) com um `requestId` por requisicao. O id e reaproveitado do header `x-request-id` quando o chamador envia (ex.: API Gateway) e volta na resposta. Abertura de OS, mudancas de status e falhas de processamento ou de integracao saem como eventos de negocio (campo `event`), base para os dashboards e alertas. Catalogo de eventos e sugestoes de consultas em [`docs/observabilidade.md`](docs/observabilidade.md).
 
 ## Principais Endpoints
 

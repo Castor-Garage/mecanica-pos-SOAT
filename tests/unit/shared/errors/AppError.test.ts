@@ -8,6 +8,7 @@ import {
   ValidationError,
   BusinessRuleError,
   InsufficientStockError,
+  IntegrationError,
 } from '../../../../src/shared/errors/AppError.js'
 
 describe('AppError', () => {
@@ -157,6 +158,24 @@ describe('AppError', () => {
 
     it('should be an instance of AppError', () => {
       const error = new InsufficientStockError('test', 1, 2)
+      expect(error).toBeInstanceOf(AppError)
+    })
+  })
+
+  describe('IntegrationError', () => {
+    it('should create an IntegrationError that keeps the integration and the cause', () => {
+      const cause = new Error('connection refused')
+      const error = new IntegrationError('smtp', 'Não foi possível enviar o e-mail.', cause)
+      expect(error.message).toBe('Não foi possível enviar o e-mail.')
+      expect(error.statusCode).toBe(502)
+      expect(error.code).toBe('INTEGRATION_FAILURE')
+      expect(error.name).toBe('IntegrationError')
+      expect(error.integration).toBe('smtp')
+      expect(error.cause).toBe(cause)
+    })
+
+    it('should be an instance of AppError', () => {
+      const error = new IntegrationError('smtp', 'test')
       expect(error).toBeInstanceOf(AppError)
     })
   })

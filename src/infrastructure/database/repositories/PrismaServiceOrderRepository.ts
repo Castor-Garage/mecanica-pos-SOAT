@@ -13,6 +13,7 @@ import type { PaginatedResult } from '../../../shared/types/pagination.js'
 import { buildPaginationMeta, normalizePagination } from '../../../shared/types/pagination.js'
 import { prisma } from '../prisma/client.js'
 import { NotFoundError, InsufficientStockError } from '../../../shared/errors/AppError.js'
+import type { BusinessEventLogger } from '../../observability/events.js'
 import { Prisma } from '@prisma/client'
 
 const fullInclude = {
@@ -152,6 +153,10 @@ function generateOrderNumber(): string {
 }
 
 export class PrismaServiceOrderRepository implements IServiceOrderRepository {
+  // Every status change goes through this repository (admin panel, client tracking page
+  // and e-mail webhook), so it is the one place that emits the order business events.
+  constructor(private readonly events?: BusinessEventLogger) {}
+
   async findById(id: string): Promise<ServiceOrderFullRecord | null> {
     const row = await prisma.serviceOrder.findUnique({ where: { id }, include: fullInclude })
     return row ? toRecord(row) : null
@@ -257,6 +262,13 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
       include: fullInclude,
     })
 
+    this.events?.emit('service_order.created', {
+      orderId: row.id,
+      orderNumber: row.orderNumber,
+      clientId: row.clientId,
+      quoteTotalAmount: data.quoteTotalAmount,
+    })
+
     return toRecord(row)
   }
 
@@ -267,6 +279,7 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
   ): Promise<ServiceOrderRecord> {
     const current = await prisma.serviceOrder.findUnique({ where: { id } })
     if (!current) throw new NotFoundError('Ordem de Serviço', id)
+    const since = await this.currentStatusSince(id)
 
     const row = await prisma.serviceOrder.update({
       where: { id },
@@ -283,6 +296,7 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
       },
     })
 
+    this.emitStatusChanged(row, current.status, toStatus, since)
     return toListRecord(row)
   }
 
@@ -295,7 +309,7 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
   }
 
   async approveQuote(id: string, approvedBy?: string): Promise<ServiceOrderFullRecord> {
-    return prisma.$transaction(async (tx) => {
+    const { record, since } = await prisma.$transaction(async (tx) => {
       const order = await tx.serviceOrder.findUnique({
         where: { id },
         include: { parts: { include: { part: true } } },
@@ -315,6 +329,7 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
         })
       }
 
+      const since = await this.currentStatusSince(id, tx)
       const now = new Date()
       const row = await tx.serviceOrder.update({
         where: { id },
@@ -334,11 +349,16 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
         include: fullInclude,
       })
 
-      return toRecord(row)
+      return { record: toRecord(row), since }
     })
+
+    // only after commit, so an approval rolled back for missing stock never shows up
+    this.emitStatusChanged(record, OSStatus.AGUARDANDO_APROVACAO, OSStatus.EM_EXECUCAO, since)
+    return record
   }
 
   async rejectQuote(id: string, rejectedBy?: string): Promise<ServiceOrderFullRecord> {
+    const since = await this.currentStatusSince(id)
     const now = new Date()
     const row = await prisma.serviceOrder.update({
       where: { id },
@@ -357,6 +377,7 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
       include: fullInclude,
     })
 
+    this.emitStatusChanged(row, OSStatus.AGUARDANDO_APROVACAO, OSStatus.EM_DIAGNOSTICO, since)
     return toRecord(row)
   }
 
@@ -390,5 +411,36 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
       completedOrders: Number(r.completedOrders),
       avgExecutionMinutes: Number(r.avgExecutionMinutes ?? 0),
     }))
+  }
+
+  // When the order entered its current status: changedAt of its latest history row.
+  // Skipped when nobody listens for events, to save the query.
+  private async currentStatusSince(
+    id: string,
+    db: Prisma.TransactionClient = prisma,
+  ): Promise<Date | null> {
+    if (!this.events) return null
+    const last = await db.oSStatusHistory.findFirst({
+      where: { serviceOrderId: id },
+      orderBy: { changedAt: 'desc' },
+      select: { changedAt: true },
+    })
+    return last?.changedAt ?? null
+  }
+
+  private emitStatusChanged(
+    order: { id: string; orderNumber: string },
+    fromStatus: string,
+    toStatus: string,
+    since: Date | null,
+  ): void {
+    this.events?.emit('service_order.status_changed', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      fromStatus,
+      toStatus,
+      // time spent in fromStatus: feeds the "average time per status" dashboard
+      secondsInPreviousStatus: since ? Math.round((Date.now() - since.getTime()) / 1000) : null,
+    })
   }
 }

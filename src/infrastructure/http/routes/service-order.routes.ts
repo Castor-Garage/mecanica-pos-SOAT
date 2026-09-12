@@ -16,6 +16,7 @@ import { ListServiceOrdersUseCase } from '../../../application/use-cases/service
 import { GetServiceStatsUseCase } from '../../../application/use-cases/service-order/GetServiceStatsUseCase.js'
 import { SendOrderByEmailUseCase } from '../../../application/use-cases/service-order/SendOrderByEmailUseCase.js'
 import { NodemailerEmailProvider } from '../../providers/email/NodemailerEmailProvider.js'
+import { BusinessEventLogger } from '../../observability/events.js'
 import { OSStatus } from '../../../domain/service-order/value-objects/OSStatus.js'
 
 const orderItemSchema = z.object({
@@ -69,7 +70,7 @@ const orderFullSchema = orderListSchema.extend({
 export async function serviceOrderRoutes(app: FastifyInstance) {
   const typed = app.withTypeProvider<ZodTypeProvider>()
 
-  const soRepo = new PrismaServiceOrderRepository()
+  const soRepo = new PrismaServiceOrderRepository(new BusinessEventLogger(app.log))
   const clientRepo = new PrismaClientRepository()
   const vehicleRepo = new PrismaVehicleRepository()
   const serviceRepo = new PrismaServiceRepository()

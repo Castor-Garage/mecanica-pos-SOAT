@@ -3,12 +3,13 @@ import { z } from 'zod'
 import { type ZodTypeProvider } from 'fastify-type-provider-zod'
 import { PrismaServiceOrderRepository } from '../../database/repositories/PrismaServiceOrderRepository.js'
 import { UpdateStatusByEmailUseCase } from '../../../application/use-cases/service-order/UpdateStatusByEmailUseCase.js'
+import { BusinessEventLogger } from '../../observability/events.js'
 import { UnauthorizedError } from '../../../shared/errors/AppError.js'
 
 export async function webhookRoutes(app: FastifyInstance) {
   const typed = app.withTypeProvider<ZodTypeProvider>()
 
-  const soRepo = new PrismaServiceOrderRepository()
+  const soRepo = new PrismaServiceOrderRepository(new BusinessEventLogger(app.log))
   const emailUC = new UpdateStatusByEmailUseCase(soRepo)
 
   typed.post(
