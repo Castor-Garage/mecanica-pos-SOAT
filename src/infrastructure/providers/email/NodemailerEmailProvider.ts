@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer'
 import type { EmailMessage, IEmailProvider } from '../../../domain/shared/providers/IEmailProvider.js'
+import { IntegrationError } from '../../../shared/errors/AppError.js'
 
 export class NodemailerEmailProvider implements IEmailProvider {
   private transporterPromise: Promise<Transporter> | null = null
@@ -28,15 +29,27 @@ export class NodemailerEmailProvider implements IEmailProvider {
   }
 
   async send(message: EmailMessage): Promise<void> {
-    const transporter = await this.getTransporter()
-    const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM ?? 'no-reply@oficina.com',
-      ...message,
+    const info = await this.deliver(message).catch((err: unknown) => {
+      // drop the cached transporter so the next attempt starts from scratch
+      this.transporterPromise = null
+      throw new IntegrationError(
+        'smtp',
+        'Não foi possível enviar o e-mail. Tente novamente mais tarde.',
+        err,
+      )
     })
 
     const previewUrl = nodemailer.getTestMessageUrl(info)
     if (previewUrl) {
       console.log(`[email] sem SMTP_USER configurado — pré-visualização (Ethereal): ${previewUrl}`)
     }
+  }
+
+  private async deliver(message: EmailMessage) {
+    const transporter = await this.getTransporter()
+    return transporter.sendMail({
+      from: process.env.SMTP_FROM ?? 'no-reply@oficina.com',
+      ...message,
+    })
   }
 }
