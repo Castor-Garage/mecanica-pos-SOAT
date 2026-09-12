@@ -1,10 +1,13 @@
 import type { PaginatedResult, PaginationParams } from '../../../shared/types/pagination.js'
 
+export type ClientStatus = 'ATIVO' | 'INATIVO' | 'BLOQUEADO'
+
 export interface ClientRecord {
   id: string
   name: string
   document: string
   documentType: 'CPF' | 'CNPJ'
+  status: ClientStatus
   phone: string
   email: string | null
   address: string | null
@@ -27,6 +30,7 @@ export interface UpdateClientData {
   phone?: string
   email?: string | null
   address?: string | null
+  status?: ClientStatus
 }
 
 export interface ListClientsParams extends PaginationParams {

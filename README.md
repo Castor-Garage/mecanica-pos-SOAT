@@ -364,13 +364,15 @@ SMTP_FROM=no-reply@oficina.com
 ## Principais Endpoints
 
 ### Autenticacao
-- `POST /admin/login`
+As rotas de clientes, veiculos, servicos, pecas e ordens de servico exigem `Authorization: Bearer <token>`. O token carrega o perfil (`role`):
+- `POST /auth/login` — login do administrador (token com `role: admin`)
+- Cliente: token com `role: client`, emitido pela Lambda de autenticacao por CPF (repositorio separado, Fase 3)
 
 ### Clientes
 - `GET /clients` — listar (paginado)
 - `GET /clients/:id`
 - `POST /clients`
-- `PUT /clients/:id`
+- `PUT /clients/:id` — inclui `status` (`ATIVO`/`INATIVO`/`BLOQUEADO`); so cliente `ATIVO` recebe token
 - `DELETE /clients/:id`
 
 ### Veiculos
@@ -396,15 +398,17 @@ SMTP_FROM=no-reply@oficina.com
 
 ### Ordens de Servico
 - `GET /service-orders` — listagem com ordenacao por status (excluindo finalizadas/entregues)
-- `GET /service-orders/:id` — publico (cliente acompanha)
-- `GET /service-orders/track/:orderNumber` — consulta publica por numero da OS
+- `GET /service-orders/:id` — cliente dono da OS ou admin
+- `GET /service-orders/track/:orderNumber` — consulta por numero da OS; cliente dono da OS ou admin
 - `POST /service-orders` — abertura de OS
-- `POST /service-orders/:id/approve` — aprovar orcamento (autenticado)
-- `POST /service-orders/:id/reject` — rejeitar orcamento (autenticado)
+- `POST /service-orders/:id/approve` — aprovar orcamento (admin)
+- `POST /service-orders/:id/reject` — rejeitar orcamento (admin)
 - `POST /service-orders/:id/advance` — avancar status
-- `POST /service-orders/:id/send-email` — publico; envia os dados da OS para um e-mail informado na hora (nao persistido)
-- `POST /service-orders/track/:orderNumber/approve` — publico; cliente aprova o orcamento pela tela de acompanhamento
-- `POST /service-orders/track/:orderNumber/reject` — publico; cliente rejeita o orcamento pela tela de acompanhamento
+- `POST /service-orders/:id/send-email` — cliente dono da OS ou admin; envia os dados da OS para um e-mail informado na hora (nao persistido)
+- `POST /service-orders/track/:orderNumber/approve` — cliente dono da OS aprova o orcamento pela tela de acompanhamento
+- `POST /service-orders/track/:orderNumber/reject` — cliente dono da OS rejeita o orcamento pela tela de acompanhamento
+
+Cliente tentando acessar OS de outro cliente recebe `404`, igual a uma OS inexistente.
 - `GET /service-orders/stats` — estatisticas de servicos
 
 ### Webhook

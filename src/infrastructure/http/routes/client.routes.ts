@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { type ZodTypeProvider } from 'fastify-type-provider-zod'
-import { requireAuth } from '../middlewares/auth.middleware.js'
+import { requireAdmin } from '../middlewares/auth.middleware.js'
 import { PrismaClientRepository } from '../../database/repositories/PrismaClientRepository.js'
 import { CreateClientUseCase } from '../../../application/use-cases/client/CreateClientUseCase.js'
 import { UpdateClientUseCase } from '../../../application/use-cases/client/UpdateClientUseCase.js'
@@ -9,11 +9,14 @@ import { DeleteClientUseCase } from '../../../application/use-cases/client/Delet
 import { GetClientUseCase } from '../../../application/use-cases/client/GetClientUseCase.js'
 import { ListClientsUseCase } from '../../../application/use-cases/client/ListClientsUseCase.js'
 
+const clientStatusSchema = z.enum(['ATIVO', 'INATIVO', 'BLOQUEADO'])
+
 const clientSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   document: z.string(),
   documentType: z.enum(['CPF', 'CNPJ']),
+  status: clientStatusSchema,
   phone: z.string(),
   email: z.string().nullable(),
   address: z.string().nullable(),
@@ -50,7 +53,7 @@ export async function clientRoutes(app: FastifyInstance) {
   typed.get(
     '/clients',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Clients'],
         summary: 'Listar clientes',
@@ -67,7 +70,7 @@ export async function clientRoutes(app: FastifyInstance) {
   typed.post(
     '/clients',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Clients'],
         summary: 'Criar cliente',
@@ -92,7 +95,7 @@ export async function clientRoutes(app: FastifyInstance) {
   typed.get(
     '/clients/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Clients'],
         summary: 'Buscar cliente por ID',
@@ -109,7 +112,7 @@ export async function clientRoutes(app: FastifyInstance) {
   typed.put(
     '/clients/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Clients'],
         summary: 'Atualizar cliente',
@@ -120,6 +123,8 @@ export async function clientRoutes(app: FastifyInstance) {
           phone: z.string().min(8).optional(),
           email: z.string().email().nullable().optional(),
           address: z.string().nullable().optional(),
+          // only ATIVO clients get a token from the CPF auth Lambda
+          status: clientStatusSchema.optional(),
         }),
         response: { 200: clientSchema },
       },
@@ -132,7 +137,7 @@ export async function clientRoutes(app: FastifyInstance) {
   typed.delete(
     '/clients/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Clients'],
         summary: 'Deletar cliente (soft delete)',

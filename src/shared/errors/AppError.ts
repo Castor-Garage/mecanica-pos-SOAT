@@ -31,6 +31,13 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message = 'Acesso negado') {
+    super(message, 403, 'FORBIDDEN')
+    this.name = 'ForbiddenError'
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message: string) {
     super(message, 422, 'VALIDATION_ERROR')

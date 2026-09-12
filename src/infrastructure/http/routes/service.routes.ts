@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { type ZodTypeProvider } from 'fastify-type-provider-zod'
-import { requireAuth } from '../middlewares/auth.middleware.js'
+import { requireAdmin } from '../middlewares/auth.middleware.js'
 import { PrismaServiceRepository } from '../../database/repositories/PrismaServiceRepository.js'
 import { CreateServiceUseCase } from '../../../application/use-cases/service/CreateServiceUseCase.js'
 import { UpdateServiceUseCase } from '../../../application/use-cases/service/UpdateServiceUseCase.js'
@@ -32,7 +32,7 @@ export async function serviceRoutes(app: FastifyInstance) {
   typed.get(
     '/services',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Services'],
         summary: 'Listar serviços',
@@ -66,7 +66,7 @@ export async function serviceRoutes(app: FastifyInstance) {
   typed.post(
     '/services',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Services'],
         summary: 'Criar serviço',
@@ -89,7 +89,7 @@ export async function serviceRoutes(app: FastifyInstance) {
   typed.get(
     '/services/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Services'],
         summary: 'Buscar serviço por ID',
@@ -106,7 +106,7 @@ export async function serviceRoutes(app: FastifyInstance) {
   typed.put(
     '/services/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Services'],
         summary: 'Atualizar serviço',
@@ -130,7 +130,7 @@ export async function serviceRoutes(app: FastifyInstance) {
   typed.delete(
     '/services/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Services'],
         summary: 'Deletar serviço (soft delete)',

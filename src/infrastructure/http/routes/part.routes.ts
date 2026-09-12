@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { type ZodTypeProvider } from 'fastify-type-provider-zod'
-import { requireAuth } from '../middlewares/auth.middleware.js'
+import { requireAdmin } from '../middlewares/auth.middleware.js'
 import { PrismaPartRepository } from '../../database/repositories/PrismaPartRepository.js'
 import { CreatePartUseCase } from '../../../application/use-cases/part/CreatePartUseCase.js'
 import { UpdatePartUseCase } from '../../../application/use-cases/part/UpdatePartUseCase.js'
@@ -34,7 +34,7 @@ export async function partRoutes(app: FastifyInstance) {
   typed.get(
     '/parts',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Parts'],
         summary: 'Listar peças',
@@ -68,7 +68,7 @@ export async function partRoutes(app: FastifyInstance) {
   typed.post(
     '/parts',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Parts'],
         summary: 'Criar peça',
@@ -93,7 +93,7 @@ export async function partRoutes(app: FastifyInstance) {
   typed.get(
     '/parts/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Parts'],
         summary: 'Buscar peça por ID',
@@ -110,7 +110,7 @@ export async function partRoutes(app: FastifyInstance) {
   typed.put(
     '/parts/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Parts'],
         summary: 'Atualizar peça',
@@ -136,7 +136,7 @@ export async function partRoutes(app: FastifyInstance) {
   typed.delete(
     '/parts/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Parts'],
         summary: 'Deletar peça (soft delete)',

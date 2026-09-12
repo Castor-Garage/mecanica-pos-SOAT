@@ -4,6 +4,7 @@ import {
   NotFoundError,
   ConflictError,
   UnauthorizedError,
+  ForbiddenError,
   ValidationError,
   BusinessRuleError,
   InsufficientStockError,
@@ -89,6 +90,21 @@ describe('AppError', () => {
 
     it('should be an instance of AppError', () => {
       const error = new UnauthorizedError()
+      expect(error).toBeInstanceOf(AppError)
+    })
+  })
+
+  describe('ForbiddenError', () => {
+    it('should create a ForbiddenError with default message', () => {
+      const error = new ForbiddenError()
+      expect(error.message).toBe('Acesso negado')
+      expect(error.statusCode).toBe(403)
+      expect(error.code).toBe('FORBIDDEN')
+      expect(error.name).toBe('ForbiddenError')
+    })
+
+    it('should be an instance of AppError', () => {
+      const error = new ForbiddenError()
       expect(error).toBeInstanceOf(AppError)
     })
   })

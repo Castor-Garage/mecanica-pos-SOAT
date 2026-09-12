@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { type ZodTypeProvider } from 'fastify-type-provider-zod'
-import { requireAuth } from '../middlewares/auth.middleware.js'
+import { requireAdmin, requireRole, assertOrderAccess } from '../middlewares/auth.middleware.js'
 import { PrismaServiceOrderRepository } from '../../database/repositories/PrismaServiceOrderRepository.js'
 import { PrismaClientRepository } from '../../database/repositories/PrismaClientRepository.js'
 import { PrismaVehicleRepository } from '../../database/repositories/PrismaVehicleRepository.js'
@@ -17,7 +17,6 @@ import { GetServiceStatsUseCase } from '../../../application/use-cases/service-o
 import { SendOrderByEmailUseCase } from '../../../application/use-cases/service-order/SendOrderByEmailUseCase.js'
 import { NodemailerEmailProvider } from '../../providers/email/NodemailerEmailProvider.js'
 import { OSStatus } from '../../../domain/service-order/value-objects/OSStatus.js'
-import { NotFoundError } from '../../../shared/errors/AppError.js'
 
 const orderItemSchema = z.object({
   id: z.string().uuid(),
@@ -85,38 +84,41 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   const statsUC = new GetServiceStatsUseCase(soRepo)
   const sendEmailUC = new SendOrderByEmailUseCase(soRepo, new NodemailerEmailProvider())
 
-  // public tracking by order number — no auth required
+  // tracking by order number — CPF-authenticated client (own orders only) or admin
   typed.get(
     '/service-orders/track/:orderNumber',
     {
+      onRequest: [requireRole('admin', 'client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Acompanhar OS pelo número (público — cliente)',
+        summary: 'Acompanhar OS pelo número (cliente dono da OS ou admin)',
+        security: [{ bearerAuth: [] }],
         params: z.object({ orderNumber: z.string().min(1) }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
-      const order = await soRepo.findByOrderNumber(request.params.orderNumber)
-      if (!order) throw new NotFoundError('Ordem de Serviço', request.params.orderNumber)
-      return order
+      const { orderNumber } = request.params
+      return assertOrderAccess(await soRepo.findByOrderNumber(orderNumber), request.user, orderNumber)
     },
   )
 
-  // public — client approves/rejects the quote from the tracking page
+  // client approves/rejects the quote of its own order from the tracking page
   typed.post(
     '/service-orders/track/:orderNumber/approve',
     {
+      onRequest: [requireRole('client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Aprovar orçamento (público — cliente acompanha)',
+        summary: 'Aprovar orçamento (cliente dono da OS)',
+        security: [{ bearerAuth: [] }],
         params: z.object({ orderNumber: z.string().min(1) }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
-      const order = await soRepo.findByOrderNumber(request.params.orderNumber)
-      if (!order) throw new NotFoundError('Ordem de Serviço', request.params.orderNumber)
+      const { orderNumber } = request.params
+      const order = assertOrderAccess(await soRepo.findByOrderNumber(orderNumber), request.user, orderNumber)
       return approveUC.execute(order.id, 'cliente')
     },
   )
@@ -124,34 +126,40 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.post(
     '/service-orders/track/:orderNumber/reject',
     {
+      onRequest: [requireRole('client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Rejeitar orçamento (público — cliente acompanha)',
+        summary: 'Rejeitar orçamento (cliente dono da OS)',
+        security: [{ bearerAuth: [] }],
         params: z.object({ orderNumber: z.string().min(1) }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
-      const order = await soRepo.findByOrderNumber(request.params.orderNumber)
-      if (!order) throw new NotFoundError('Ordem de Serviço', request.params.orderNumber)
+      const { orderNumber } = request.params
+      const order = assertOrderAccess(await soRepo.findByOrderNumber(orderNumber), request.user, orderNumber)
       return rejectUC.execute(order.id, 'cliente')
     },
   )
 
-  // public — send OS data by e-mail from the tracking page (address is not persisted)
+  // send OS data by e-mail from the tracking page (address is not persisted)
   typed.post(
     '/service-orders/:id/send-email',
     {
+      onRequest: [requireRole('admin', 'client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Enviar dados da OS por e-mail (público — cliente)',
+        summary: 'Enviar dados da OS por e-mail (cliente dono da OS ou admin)',
+        security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
         body: z.object({ email: z.string().email() }),
         response: { 200: z.object({ message: z.string() }) },
       },
     },
     async (request) => {
-      await sendEmailUC.execute(request.params.id, request.body.email)
+      const { id } = request.params
+      assertOrderAccess(await getUC.execute(id), request.user, id)
+      await sendEmailUC.execute(id, request.body.email)
       return { message: 'E-mail enviado com sucesso' }
     },
   )
@@ -160,7 +168,7 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.get(
     '/service-orders/stats',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Service Orders'],
         summary: 'Tempo médio de execução por serviço',
@@ -185,7 +193,7 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.get(
     '/service-orders',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Service Orders'],
         summary: 'Listar ordens de serviço',
@@ -217,7 +225,7 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.post(
     '/service-orders',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Service Orders'],
         summary: 'Criar ordem de serviço',
@@ -255,22 +263,25 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.get(
     '/service-orders/:id',
     {
+      onRequest: [requireRole('admin', 'client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Buscar ordem de serviço (público — cliente acompanha)',
+        summary: 'Buscar ordem de serviço (cliente dono da OS ou admin)',
+        security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
-      return getUC.execute(request.params.id)
+      const { id } = request.params
+      return assertOrderAccess(await getUC.execute(id), request.user, id)
     },
   )
 
   typed.post(
     '/service-orders/:id/advance',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Service Orders'],
         summary: 'Avançar status da OS',
@@ -290,7 +301,7 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.post(
     '/service-orders/:id/approve',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Service Orders'],
         summary: 'Aprovar orçamento da OS',
@@ -308,7 +319,7 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.post(
     '/service-orders/:id/reject',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Service Orders'],
         summary: 'Rejeitar orçamento da OS',
