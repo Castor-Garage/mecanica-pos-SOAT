@@ -11,3 +11,4 @@ data:
   ADMIN_EMAIL: "admin@oficina.com"
   POSTGRES_DB: "mecanica_db"
   POSTGRES_USER: "workshop"
+  NEW_RELIC_APP_NAME: "POS-SOAT-CASTOR"
