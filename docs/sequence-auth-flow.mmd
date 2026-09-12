@@ -1,0 +1,45 @@
+sequenceDiagram
+    actor Cliente
+    participant GW as API Gateway
+    participant Auth as Lambda authenticateByCpf
+    participant DB as RDS PostgreSQL
+    participant Authz as Lambda jwtAuthorizer
+    participant API as API principal (EKS)
+
+    Note over Cliente,API: Passo 1 - autenticação por CPF (sem senha)
+    Cliente->>GW: POST /auth/cpf { cpf }
+    GW->>Auth: invoke (proxy, sem authorizer)
+    Auth->>Auth: CPF.isValid(cpf)
+    alt CPF com formato/dígito inválido
+        Auth-->>GW: 400 { message: "CPF inválido" }
+        GW-->>Cliente: 400
+    else CPF válido
+        Auth->>DB: SELECT id, status FROM clients WHERE document = $1 AND deleted_at IS NULL
+        alt cliente não encontrado
+            Auth-->>GW: 404 { message: "Cliente não encontrado" }
+            GW-->>Cliente: 404
+        else status != ATIVO
+            Auth-->>GW: 403 { message: "Cliente inativo ou bloqueado" }
+            GW-->>Cliente: 403
+        else status == ATIVO
+            Auth->>Auth: jwt.sign({ sub: client.id, role: "client" }, JWT_SECRET, { expiresIn: "8h" })
+            Auth-->>GW: 200 { token, expiresIn }
+            GW-->>Cliente: 200 { token, expiresIn }
+        end
+    end
+
+    Note over Cliente,API: Passo 2 - consumo de rota protegida com o token emitido
+    Cliente->>GW: GET /service-orders/track/:orderNumber (Authorization: Bearer token)
+    GW->>Authz: invoke (REQUEST authorizer)
+    Authz->>Authz: jwt.verify(token, JWT_SECRET)
+    alt token inválido/expirado
+        Authz-->>GW: { isAuthorized: false }
+        GW-->>Cliente: 401
+    else token válido
+        Authz-->>GW: { isAuthorized: true }
+        GW->>API: proxy da requisição original
+        API->>API: request.jwtVerify() (defesa em profundidade, @fastify/jwt)
+        API->>API: requireRole("client") + assertOrderAccess (404 se OS não é do cliente)
+        API-->>GW: 200 (ou 404 se a OS não pertence a este cliente)
+        GW-->>Cliente: resposta final
+    end

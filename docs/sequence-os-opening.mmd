@@ -1,0 +1,35 @@
+sequenceDiagram
+    actor Cliente as Cliente (JWT da Lambda CPF)
+    participant API as API principal
+    participant UC as CreateServiceOrderUseCase
+    participant Repo as PrismaServiceOrderRepository
+    participant DB as RDS PostgreSQL
+    participant Log as Logger (stdout JSON + requestId)
+    participant NR as New Relic (Log API)
+
+    Cliente->>API: POST /service-orders (Bearer JWT)
+    API->>API: request.jwtVerify() + requireRole("client"|"admin")
+    API->>UC: execute({ clientId, vehicleId, services[], parts[] })
+
+    UC->>Repo: findById(client) / findById(vehicle)
+    Repo->>DB: SELECT ...
+    DB-->>Repo: cliente e veículo (valida vínculo e soft delete)
+
+    UC->>Repo: findById(service) / findById(part) por item
+    Repo->>DB: SELECT ...
+    DB-->>Repo: serviços/peças ativos (bloqueia se isActive = false)
+
+    UC->>UC: calcula quoteTotalAmount (soma serviços + peças)
+    UC->>Repo: create({ ...dados, status: RECEBIDA, quoteTotalAmount })
+
+    Repo->>DB: INSERT service_orders (status=RECEBIDA)
+    Repo->>DB: INSERT service_order_items / service_order_parts (snapshot de unitPrice)
+    Repo->>DB: INSERT os_status_history (fromStatus=null, toStatus=RECEBIDA)
+    Repo->>Log: emit event "service_order.created" { orderId, orderNumber, clientId, quoteTotalAmount, requestId }
+    Log-->>NR: log JSON coletado pelo agente/integração New Relic
+
+    Repo-->>UC: ServiceOrderFullRecord
+    UC-->>API: ServiceOrderFullRecord
+    API-->>Cliente: 201 { orderNumber, status: RECEBIDA, quoteTotalAmount, ... }
+
+    Note over NR: dashboard "volume diário de OS" conta este evento;<br/>dashboard "tempo médio por status" usa os_status_history<br/>a partir da próxima transição (AdvanceStatusUseCase)
