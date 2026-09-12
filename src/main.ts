@@ -1,4 +1,6 @@
 import 'dotenv/config'
+// must load before any instrumented module (http, pg, fastify) is required
+import 'newrelic'
 import { buildServer } from './infrastructure/http/server.js'
 
 const app = buildServer()

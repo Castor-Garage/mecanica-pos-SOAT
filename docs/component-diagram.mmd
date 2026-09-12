@@ -1,0 +1,72 @@
+flowchart TB
+  Cliente["Cliente / Front-end"]
+  Admin["Admin / Painel"]
+
+  subgraph GW["API Gateway (AWS API Gateway HTTP API)"]
+    RouteAuth["POST /auth/cpf (sem authorizer)"]
+    RouteProxy["ANY /{proxy+} (Lambda authorizer JWT)"]
+  end
+
+  subgraph L["castor-garage-auth-lambda (repo 1)"]
+    AuthFn["Lambda: authenticateByCpf"]
+    AuthzFn["Lambda: jwtAuthorizer"]
+  end
+
+  Cliente -->|CPF| RouteAuth --> AuthFn
+  Cliente -->|Bearer JWT| RouteProxy
+  RouteProxy -. valida token .-> AuthzFn
+  RouteProxy -->|proxy HTTP / VPC Link| Deploy
+
+  subgraph EKS["Cluster EKS (castor-garage-k8s-infra, repo 2)"]
+    direction TB
+    NS_S["namespace castor-garage-staging"]
+    NS_P["namespace castor-garage-production"]
+    subgraph NS_P
+      HPA["HPA 2-10 replicas (CPU 70% / mem 80%)"] -. escala .-> Deploy["Deployment castor-garage-api"]
+      Svc["Service"] --> Deploy
+    end
+  end
+
+  subgraph APP["mecanica-pos-SOAT (repo 4) - Clean Architecture"]
+    Routes["Routes"] --> UseCases["Use Cases"] --> Domain["Domain"]
+    UseCases --> Repos["Prisma Repositories"]
+  end
+
+  Deploy -. roda .-> APP
+
+  subgraph DB["RDS PostgreSQL (castor-garage-db-infra, repo 3)"]
+    RDS[("mecanica_db")]
+  end
+
+  Repos --> RDS
+  AuthFn -->|SELECT status by document| RDS
+  AuthFn -->|SSM: jwt-secret| SSM[("SSM Parameter Store")]
+  AuthzFn -->|SSM: jwt-secret| SSM
+  Deploy -->|SSM via deploy job| SSM
+
+  subgraph OBS["New Relic"]
+    APM["APM (agente Node.js)"]
+    Infra["Infra/K8s integration (helm nri-bundle)"]
+    Synth["Synthetics: GET /health"]
+    Dash["Dashboards: volume de OS, tempo por status, erros, latencia/CPU/mem"]
+    Alert["Alertas: service_order.processing_failed"]
+  end
+
+  APP -. logs JSON + requestId .-> Infra
+  APP -. traces/metrics .-> APM
+  APM --> Dash
+  Infra --> Dash
+  Dash --> Alert
+
+  subgraph CICD["CI/CD - 4 repositorios (GitHub Actions)"]
+    direction LR
+    P1["repo 1: test -> package -> terraform apply"]
+    P2["repo 2: fmt/validate -> plan -> apply"]
+    P3["repo 3: fmt/validate -> plan -> apply"]
+    P4["repo 4: test -> build (GHCR) -> deploy (kustomize)"]
+  end
+
+  P1 -. publica .-> L
+  P2 -. provisiona .-> EKS
+  P3 -. provisiona .-> DB
+  P4 -. publica imagem + aplica overlay .-> Deploy

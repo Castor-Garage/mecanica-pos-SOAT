@@ -67,6 +67,16 @@ spec:
                 secretKeyRef:
                   name: castor-garage-secret
                   key: WEBHOOK_SECRET
+            - name: NEW_RELIC_APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: castor-garage-config
+                  key: NEW_RELIC_APP_NAME
+            - name: NEW_RELIC_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: castor-garage-secret
+                  key: NEW_RELIC_LICENSE_KEY
           livenessProbe:
             httpGet:
               path: /health

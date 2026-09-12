@@ -368,6 +368,15 @@ LOG_LEVEL=info
 
 Fora de `development`, a API escreve logs em JSON (uma linha por log) com um `requestId` por requisicao. O id e reaproveitado do header `x-request-id` quando o chamador envia (ex.: API Gateway) e volta na resposta. Abertura de OS, mudancas de status e falhas de processamento ou de integracao saem como eventos de negocio (campo `event`), base para os dashboards e alertas. Catalogo de eventos e sugestoes de consultas em [`docs/observabilidade.md`](docs/observabilidade.md).
 
+## Documentacao da Arquitetura (Fase 3)
+
+- **Diagrama de Componentes**: [`docs/component-diagram.mmd`](docs/component-diagram.mmd) — visao de nuvem completa (API Gateway, Lambdas, EKS, RDS, New Relic, CI/CD dos 4 repositorios).
+- **Diagramas de Sequencia**: [`docs/sequence-auth-flow.mmd`](docs/sequence-auth-flow.mmd) (autenticacao por CPF) e [`docs/sequence-os-opening.mmd`](docs/sequence-os-opening.mmd) (abertura de OS).
+- **Modelo de dominio (ER)**: [`docs/modelo-dominio.mmd`](docs/modelo-dominio.mmd) e [`docs/linguagem-ubiqua.md`](docs/linguagem-ubiqua.md).
+- **RFCs**: [`docs/rfc/`](docs/rfc/) — escolha de nuvem, banco de dados e estrategia de autenticacao.
+- **ADRs**: [`docs/adr/`](docs/adr/) — padrao de comunicacao, uso de HPA, split em 4 repositorios, RDS vs banco em cluster, cluster unico multi-namespace.
+- Repositorios relacionados (Fase 3): `castor-garage-auth-lambda`, `castor-garage-k8s-infra`, `castor-garage-db-infra` _(links a adicionar quando publicados)_.
+
 ## Principais Endpoints
 
 ### Autenticacao

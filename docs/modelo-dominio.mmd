@@ -12,10 +12,12 @@ erDiagram
         uuid id PK
         string name
         string document UK "CPF ou CNPJ"
+        string documentType "CPF|CNPJ"
+        string status "ATIVO|INATIVO|BLOQUEADO"
         string phone
         string email
         string address
-        boolean isActive
+        datetime deletedAt "soft delete"
         datetime createdAt
         datetime updatedAt
     }
@@ -28,7 +30,7 @@ erDiagram
         string model
         int year
         string color
-        boolean isActive
+        datetime deletedAt "soft delete"
         datetime createdAt
         datetime updatedAt
     }
@@ -37,7 +39,8 @@ erDiagram
         uuid id PK
         string name
         string description
-        decimal unitPrice
+        decimal basePrice
+        int estimatedMinutes
         boolean isActive
         datetime createdAt
         datetime updatedAt
@@ -79,18 +82,28 @@ erDiagram
         uuid id PK
         uuid serviceOrderId FK
         uuid serviceId FK
-        string serviceName "snapshot no momento da OS"
         int quantity
-        decimal unitPrice "snapshot no momento da OS"
+        decimal unitPrice "snapshot no momento da OS - nome vem de join com Service"
+        datetime createdAt
     }
 
     ServiceOrderPart {
         uuid id PK
         uuid serviceOrderId FK
         uuid partId FK
-        string partName "snapshot no momento da OS"
         int quantity
-        decimal unitPrice "snapshot no momento da OS"
+        decimal unitPrice "snapshot no momento da OS - nome vem de join com Part"
+        datetime createdAt
+    }
+
+    OSStatusHistory {
+        uuid id PK
+        uuid serviceOrderId FK
+        string fromStatus "nulo na primeira transicao"
+        string toStatus
+        datetime changedAt
+        string changedBy
+        text notes
     }
 
     Client ||--o{ Vehicle : "possui"
@@ -98,5 +111,6 @@ erDiagram
     Vehicle ||--o{ ServiceOrder : "submetido em"
     ServiceOrder ||--o{ ServiceOrderItem : "contem"
     ServiceOrder ||--o{ ServiceOrderPart : "utiliza"
+    ServiceOrder ||--o{ OSStatusHistory : "audita transicoes"
     Service ||--o{ ServiceOrderItem : "referenciado por"
     Part ||--o{ ServiceOrderPart : "referenciado por"
