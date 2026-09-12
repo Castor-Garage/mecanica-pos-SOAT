@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { type ZodTypeProvider } from 'fastify-type-provider-zod'
-import { requireAuth } from '../middlewares/auth.middleware.js'
+import { requireAdmin } from '../middlewares/auth.middleware.js'
 import { PrismaVehicleRepository } from '../../database/repositories/PrismaVehicleRepository.js'
 import { PrismaClientRepository } from '../../database/repositories/PrismaClientRepository.js'
 import { CreateVehicleUseCase } from '../../../application/use-cases/vehicle/CreateVehicleUseCase.js'
@@ -36,7 +36,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
   typed.get(
     '/vehicles',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Vehicles'],
         summary: 'Listar veículos',
@@ -67,7 +67,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
   typed.post(
     '/vehicles',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Vehicles'],
         summary: 'Criar veículo',
@@ -92,7 +92,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
   typed.get(
     '/vehicles/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Vehicles'],
         summary: 'Buscar veículo por ID',
@@ -109,7 +109,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
   typed.put(
     '/vehicles/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Vehicles'],
         summary: 'Atualizar veículo',
@@ -132,7 +132,7 @@ export async function vehicleRoutes(app: FastifyInstance) {
   typed.delete(
     '/vehicles/:id',
     {
-      onRequest: [requireAuth],
+      onRequest: [requireAdmin],
       schema: {
         tags: ['Vehicles'],
         summary: 'Deletar veículo (soft delete)',

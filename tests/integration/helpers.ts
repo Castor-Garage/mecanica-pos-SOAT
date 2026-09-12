@@ -22,3 +22,8 @@ export async function loginAsAdmin(app: TestApp): Promise<string> {
 export function authHeader(token: string) {
   return { Authorization: `Bearer ${token}` }
 }
+
+// same format and secret as the token issued by the CPF auth Lambda
+export function signClientToken(app: TestApp, clientId: string): string {
+  return app.jwt.sign({ sub: clientId, role: 'client' })
+}

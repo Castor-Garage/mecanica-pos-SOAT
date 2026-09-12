@@ -11,6 +11,12 @@ enum DocumentType {
   CNPJ
 }
 
+enum ClientStatus {
+  ATIVO
+  INATIVO
+  BLOQUEADO
+}
+
 enum OSStatus {
   RECEBIDA
   EM_DIAGNOSTICO
@@ -36,6 +42,7 @@ model Client {
   name          String
   document      String         @unique
   documentType  DocumentType   @map("document_type")
+  status        ClientStatus   @default(ATIVO)
   phone         String
   email         String?
   address       String?
@@ -62,6 +69,7 @@ model Vehicle {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
+  @@index([clientId])
   @@map("vehicles")
 }
 
@@ -118,6 +126,11 @@ model ServiceOrder {
   parts              ServiceOrderPart[]
   statusHistory      OSStatusHistory[]
 
+  @@index([clientId])
+  @@index([vehicleId])
+  // active-order listing filters by status; daily volume dashboard groups by createdAt
+  @@index([status])
+  @@index([createdAt])
   @@map("service_orders")
 }
 
@@ -131,6 +144,8 @@ model ServiceOrderItem {
   unitPrice      Decimal      @map("unit_price") @db.Decimal(10, 2)
   createdAt      DateTime     @default(now()) @map("created_at")
 
+  @@index([serviceOrderId])
+  @@index([serviceId])
   @@map("service_order_items")
 }
 
@@ -144,6 +159,8 @@ model ServiceOrderPart {
   unitPrice      Decimal      @map("unit_price") @db.Decimal(10, 2)
   createdAt      DateTime     @default(now()) @map("created_at")
 
+  @@index([serviceOrderId])
+  @@index([partId])
   @@map("service_order_parts")
 }
 
@@ -157,5 +174,7 @@ model OSStatusHistory {
   changedBy      String?      @map("changed_by")
   notes          String?
 
+  // time spent in each status (dashboard) walks an order's history in changedAt order
+  @@index([serviceOrderId, changedAt])
   @@map("os_status_history")
 }

@@ -74,6 +74,7 @@ const mockClientRecord: ClientRecord = {
   name: 'João Silva',
   document: '52998224725',
   documentType: 'CPF',
+  status: 'ATIVO',
   phone: '(11) 99999-9999',
   email: 'joao@example.com',
   address: 'Rua A, 123',

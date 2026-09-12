@@ -158,12 +158,13 @@ describe('Service Order full workflow', () => {
     })
     expect(terminalAdvance.statusCode).toBe(422)
 
-    const getPublic = await app.inject({
+    const getAsAdmin = await app.inject({
       method: 'GET',
       url: `/service-orders/${order.id}`,
+      headers: authHeader(token),
     })
-    expect(getPublic.statusCode).toBe(200)
-    expect(getPublic.json<{ id: string }>().id).toBe(order.id)
+    expect(getAsAdmin.statusCode).toBe(200)
+    expect(getAsAdmin.json<{ id: string }>().id).toBe(order.id)
 
     const stats = await app.inject({
       method: 'GET',
