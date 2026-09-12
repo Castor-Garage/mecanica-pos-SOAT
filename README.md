@@ -142,6 +142,12 @@ flowchart TB
 - **Kubernetes** (`/k8s`) mantem a API rodando com auto-scaling (HPA por CPU/memoria) e configuracao via ConfigMap/Secret.
 - **CI/CD** (`.github/workflows/pipeline.yml`) builda, testa, publica a imagem no GHCR e faz o deploy da nova versao no cluster a cada push em `main`.
 
+## Fase 3 — Autenticacao por CPF (Function Serverless)
+
+A pasta [`/lambda`](./lambda) contem a Function Serverless que autentica clientes por CPF: valida o documento, consulta o cliente nesta mesma base (tabela `clients`) e emite um JWT `role: client` que esta API ja valida em `requireRole('client')` (`src/infrastructure/http/middlewares/auth.middleware.ts`).
+
+Hoje ela vive como subpasta deste repositorio; antes da entrega final sera extraida para um repositorio proprio (`mecanica-auth-lambda-SOAT`), conforme exigido pelo desafio (4 repositorios separados: Lambda, infra Kubernetes, infra do banco, aplicacao). Detalhes, contrato do endpoint e deploy: ver `lambda/README.md`. Pipeline dedicado: `.github/workflows/lambda-pipeline.yml`.
+
 ## Como Rodar Local
 
 ### 1. Instalar dependencias

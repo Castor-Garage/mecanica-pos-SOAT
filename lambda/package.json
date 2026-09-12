@@ -1,0 +1,30 @@
+{
+  "name": "mecanica-auth-lambda-soat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Function Serverless de autenticacao por CPF - Castor Garage (Tech Challenge Fase 3)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "esbuild src/handler.ts --bundle --platform=node --target=node20 --format=esm --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=dist/handler.mjs --external:aws-sdk",
+    "package": "npm run build && cd dist && zip -r ../function.zip handler.mjs"
+  },
+  "dependencies": {
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "esbuild": "^0.24.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
