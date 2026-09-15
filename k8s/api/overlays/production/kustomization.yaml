@@ -9,3 +9,7 @@ resources:
 
 patchesStrategicMerge:
   - configmap-patch.yaml
+
+images:
+  - name: ghcr.io/castor-garage/mecanica-pos-soat
+    newTag: latest
