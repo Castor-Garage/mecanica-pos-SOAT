@@ -11,3 +11,7 @@ patchesStrategicMerge:
   - configmap-patch.yaml
   - hpa-patch.yaml
   - replicas-patch.yaml
+
+images:
+  - name: ghcr.io/castor-garage/mecanica-pos-soat
+    newTag: latest
