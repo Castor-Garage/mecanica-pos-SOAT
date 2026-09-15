@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: castor-garage-api
+  labels:
+    app: castor-garage-api
+spec:
+  selector:
+    app: castor-garage-api
+  type: LoadBalancer
+  ports:
+    - port: 3000
+      targetPort: 3000

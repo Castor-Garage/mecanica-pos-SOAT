@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-staging-db
+  namespace: castor-garage-staging
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: psql
+          image: postgres:16-alpine
+          env:
+            - name: ADMIN_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-bootstrap
+                  key: ADMIN_DATABASE_URL
+          command: ["sh", "-c"]
+          args:
+            - |
+              psql "$ADMIN_DATABASE_URL" -tc \
+                "SELECT 1 FROM pg_database WHERE datname='mecanica_db_staging'" | grep -q 1 \
+                || psql "$ADMIN_DATABASE_URL" -c "CREATE DATABASE mecanica_db_staging"

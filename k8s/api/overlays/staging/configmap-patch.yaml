@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: castor-garage-config
+data:
+  NODE_ENV: "homologacao"
+  POSTGRES_DB: "mecanica_db_staging"
+  NEW_RELIC_APP_NAME: "POS-SOAT-CASTOR-STAGING"
