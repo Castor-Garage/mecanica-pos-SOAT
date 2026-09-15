@@ -193,12 +193,8 @@ jobs:
       - name: Aplicar manifesto de namespace (staging)
         run: kubectl apply -f k8s/api/overlays/staging/namespace.yaml
 
-      - name: Criar/atualizar Secret db-bootstrap (staging)
-        run: |
-          kubectl create secret generic db-bootstrap \
-            --from-literal=ADMIN_DATABASE_URL='${{ secrets.DATABASE_URL }}' \
-            -n castor-garage-staging \
-            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Deletar Job anterior de bootstrap (evita template imutável)
+        run: kubectl delete job create-staging-db -n castor-garage-staging --ignore-not-found
 
       - name: Aplicar Job de bootstrap do database (staging)
         run: kubectl apply -f k8s/jobs/create-staging-db.yaml
