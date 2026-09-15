@@ -5,4 +5,4 @@ metadata:
 data:
   NODE_ENV: "homologacao"
   POSTGRES_DB: "mecanica_db_staging"
-  NEW_RELIC_APP_NAME: "POS-SOAT-CASTOR-STAGING"
+  NEW_RELIC_APP_NAME: "mecanica-castor-garage-staging"

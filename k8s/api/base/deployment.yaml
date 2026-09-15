@@ -76,6 +76,21 @@ spec:
                 secretKeyRef:
                   name: castor-garage-secret
                   key: NEW_RELIC_LICENSE_KEY
+            - name: NEW_RELIC_AI_MONITORING_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: castor-garage-config
+                  key: NEW_RELIC_AI_MONITORING_ENABLED
+            - name: NEW_RELIC_CUSTOM_INSIGHTS_EVENTS_MAX_SAMPLES_STORED
+              valueFrom:
+                configMapKeyRef:
+                  name: castor-garage-config
+                  key: NEW_RELIC_CUSTOM_INSIGHTS_EVENTS_MAX_SAMPLES_STORED
+            - name: NEW_RELIC_SPAN_EVENTS_MAX_SAMPLES_STORED
+              valueFrom:
+                configMapKeyRef:
+                  name: castor-garage-config
+                  key: NEW_RELIC_SPAN_EVENTS_MAX_SAMPLES_STORED
           livenessProbe:
             httpGet:
               path: /health

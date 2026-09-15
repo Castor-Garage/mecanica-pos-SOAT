@@ -119,6 +119,16 @@ jobs:
       - name: Aplicar manifesto de namespace
         run: kubectl apply -f k8s/api/overlays/production/namespace.yaml
 
+      # castor-garage-secret so e aplicado manualmente nesse namespace (ver
+      # README) - so a chave da New Relic e mantida em dia aqui, via patch
+      # (nao mexe nas outras chaves ja existentes, como DATABASE_URL/JWT_SECRET).
+      - name: Atualizar license key da New Relic no Secret (production)
+        run: |
+          kubectl --context "${EKS_CLUSTER}" -n castor-garage-production patch secret castor-garage-secret \
+            --type merge -p "{\"stringData\":{\"NEW_RELIC_LICENSE_KEY\":\"${NEW_RELIC_LICENSE_KEY}\"}}"
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+
       - name: Patch da tag de imagem (production)
         run: |
           sed -i "s/newTag:.*/newTag: ${GITHUB_SHA}/" k8s/api/overlays/production/kustomization.yaml
@@ -192,6 +202,16 @@ jobs:
 
       - name: Aplicar manifesto de namespace (staging)
         run: kubectl apply -f k8s/api/overlays/staging/namespace.yaml
+
+      # castor-garage-secret so e aplicado manualmente nesse namespace (ver
+      # README) - so a chave da New Relic e mantida em dia aqui, via patch
+      # (nao mexe nas outras chaves ja existentes, como DATABASE_URL/JWT_SECRET).
+      - name: Atualizar license key da New Relic no Secret (staging)
+        run: |
+          kubectl --context "${EKS_CLUSTER}" -n castor-garage-staging patch secret castor-garage-secret \
+            --type merge -p "{\"stringData\":{\"NEW_RELIC_LICENSE_KEY\":\"${NEW_RELIC_LICENSE_KEY}\"}}"
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
 
       - name: Deletar Job anterior de bootstrap (evita template imutável)
         run: kubectl delete job create-staging-db -n castor-garage-staging --ignore-not-found

@@ -37,5 +37,22 @@ services:
       timeout: 5s
       retries: 10
 
+  newrelic-infra:
+    image: newrelic/infrastructure:latest
+    container_name: newrelic-infra
+    cap_add:
+      - SYS_PTRACE
+    network_mode: host
+    pid: host
+    privileged: true
+    volumes:
+      - "/:/host:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    env_file:
+      - .env
+    environment:
+      NRIA_LICENSE_KEY: ${NEW_RELIC_DOCKER}
+    restart: unless-stopped
+
 volumes:
   postgres_data:
