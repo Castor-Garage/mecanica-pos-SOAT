@@ -105,7 +105,7 @@ Componentes da aplicacao, infraestrutura provisionada e fluxo de deploy:
 
 ```mermaid
 flowchart TB
-  Client["Cliente / Front-end"] -->|HTTP| Svc
+  Client["Cliente / Front-end"] -->|HTTP :30080| Svc
 
   subgraph API["Arquitetura de codigo (Clean Architecture)"]
     Routes["Routes"] --> UseCases["Use Cases"]
@@ -115,15 +115,20 @@ flowchart TB
 
   API -. roda dentro de .-> Deploy
 
-  subgraph K8s["Kubernetes (cluster EKS - castor-garage-k8s-infra)"]
+  subgraph K8s["Kubernetes (kind - cluster local)"]
     direction TB
     CM["ConfigMap"] --> Deploy
     Secret["Secret"] --> Deploy
     HPA["HorizontalPodAutoscaler"] -. escala .-> Deploy["Deployment castor-garage-api (2-10 replicas)"]
-    Svc["Service :3000"] --> Deploy
+    Svc["Service NodePort :30080"] --> Deploy
+    Deploy --> PgSvc["Service postgres :5432"] --> PgDeploy["Deployment postgres"]
   end
 
-  Deploy --> RDS["RDS PostgreSQL (castor-garage-db-infra)"]
+  subgraph TF["Terraform (/infra)"]
+    T1["kind create cluster"] --> T2["instala metrics-server"] --> T3["aplica namespace/configmap/secret/postgres"]
+  end
+
+  T3 -. provisiona .-> K8s
 
   subgraph CICD["CI/CD (GitHub Actions)"]
     direction LR
@@ -133,8 +138,8 @@ flowchart TB
   J3 -. publica nova imagem .-> Deploy
 ```
 
-- **Kubernetes** (`/k8s/api`) mantem a API rodando com auto-scaling (HPA por CPU/memoria); namespace, ConfigMap, Secret e o cluster em si sao provisionados pelo repo `castor-garage-k8s-infra`.
-- **Banco de dados**: PostgreSQL gerenciado (RDS), provisionado pelo repo `castor-garage-db-infra`; a API so recebe a `DATABASE_URL` via Secret.
+- **Terraform** (`/infra`) provisiona o cluster kind, o `metrics-server` (necessario para o HPA) e o banco de dados (namespace + configmap + secret + Postgres), reaproveitando os manifestos de `/k8s` como fonte unica de verdade.
+- **Kubernetes** (`/k8s`) mantem a API rodando com auto-scaling (HPA por CPU/memoria) e configuracao via ConfigMap/Secret.
 - **CI/CD** (`.github/workflows/pipeline.yml`) builda, testa, publica a imagem no GHCR e faz o deploy da nova versao no cluster a cada push em `main`.
 
 ## Como Rodar Local
@@ -182,9 +187,7 @@ docker compose up --build
 
 ## Deploy em Kubernetes
 
-Pre-requisito: namespace, ConfigMap, Secret e o cluster EKS ja provisionados
-pelo repo `castor-garage-k8s-infra`; o banco (RDS) provisionado pelo repo
-`castor-garage-db-infra`. Este repo so cuida do deploy da API em si.
+Pre-requisito: cluster rodando (`minikube`, `kind` ou cloud) com `kubectl` configurado.
 
 **1. Build e push da imagem** (substitua `YOUR_REGISTRY`):
 ```bash
@@ -194,30 +197,95 @@ docker push YOUR_REGISTRY/mecanica-api:latest
 
 Atualize o campo `image` em `k8s/api/deployment.yaml`.
 
-**2. Aplique os manifestos da API:**
+**2. Ajuste os secrets** em `k8s/secret.yaml` com os valores reais de producao.
+
+**3. Aplique os manifestos:**
 ```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/postgres/
 kubectl apply -f k8s/api/
 ```
 
-**3. Verifique o deploy:**
+**4. Verifique o deploy:**
 ```bash
 kubectl get pods -n castor-garage -w
 kubectl get hpa -n castor-garage
 ```
 
+A API ficara disponivel em `http://<NODE_IP>:30080`.
+
 ### Estrutura dos manifestos (`/k8s`)
 
 ```
 k8s/
+├── namespace.yaml          # Namespace castor-garage
+├── configmap.yaml          # Variaveis nao-sensiveis
+├── secret.yaml             # Variaveis sensiveis (JWT_SECRET, DATABASE_URL, etc.)
+├── postgres/
+│   ├── pvc.yaml            # PersistentVolumeClaim 5Gi
+│   ├── deployment.yaml     # PostgreSQL 16-alpine
+│   └── service.yaml        # ClusterIP :5432
 └── api/
     ├── deployment.yaml     # API (2 replicas base, health checks)
-    ├── service.yaml        # Service
+    ├── service.yaml        # NodePort :30080
     └── hpa.yaml            # Escala de 2 a 10 pods (CPU >70%, MEM >80%)
 ```
 
-Namespace, ConfigMap, Secret e a infraestrutura do cluster EKS vivem no repo
-`castor-garage-k8s-infra`. A infraestrutura do banco (RDS PostgreSQL) vive no
-repo `castor-garage-db-infra`. Ver [ADR 0003](docs/adr/0003-split-em-4-repos.md).
+## Provisionamento com Terraform (`/infra`)
+
+Scripts Terraform para provisionar, localmente, o cluster Kubernetes (kind), o
+`metrics-server` (para o HPA funcionar) e o banco de dados. Pre-requisitos:
+Docker, [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation),
+`kubectl` e [Terraform](https://developer.hashicorp.com/terraform/install)
+>= 1.5.
+
+```bash
+cd infra
+terraform init
+terraform apply
+```
+
+Isso cria o cluster `castor-garage`, instala o `metrics-server` e aplica
+`k8s/namespace.yaml`, `k8s/configmap.yaml`, `k8s/secret.yaml` e
+`k8s/postgres/*.yaml`. Depois, publique a API (isso **nao** e feito pelo
+Terraform de proposito — fica a cargo do `kubectl apply` manual ou do job
+`deploy` do CI/CD, ver abaixo):
+
+```bash
+kubectl apply -f k8s/api/
+```
+
+Para destruir tudo (namespace + cluster kind):
+
+```bash
+cd infra
+terraform destroy
+```
+
+Detalhes de cada recurso em [`infra/README.md`](infra/README.md).
+
+## Provisionamento na AWS Academy — EKS (`/infra/aws`)
+
+Modulo Terraform separado para subir um cluster **EKS real** na conta do
+AWS Academy Learner Lab (usado para o video demonstrativo do Tech Challenge).
+Reaproveita o `LabRole` da Academy como cluster role/node role (nao da pra
+criar IAM role nova no Academy), tageia as subnets default para o Service
+`LoadBalancer` da API funcionar, e aplica o mesmo banco de dados de `/k8s`.
+
+```bash
+cd infra/aws
+terraform init
+terraform apply -var="lab_role_arn=arn:aws:iam::<account-id>:role/LabRole"
+```
+
+Diferente do `kind` local, o cluster EKS **nao e criado/destruido a cada
+push** (levaria 15-25 min em cada sentido) — voce sobe uma vez, manualmente,
+antes de gravar o video, e o job `deploy` do pipeline so publica a nova
+imagem nele a cada push. Passo a passo completo (credenciais do Lab, secrets
+do GitHub, como derrubar tudo depois) em
+[`infra/aws/README.md`](infra/aws/README.md).
 
 ## CI/CD (`.github/workflows/pipeline.yml`)
 
@@ -231,10 +299,10 @@ Pipeline no GitHub Actions com 3 jobs encadeados, disparada em push/PR para
    `ghcr.io/castor-garage/mecanica-pos-soat` (tags `latest` e `<sha>`).
 3. **`deploy`** (so em push para `main`) — autentica na AWS com as
    credenciais temporarias do Academy Learner Lab (secrets do GitHub),
-   aponta o `kubectl` para o cluster EKS ja provisionado pelo repo
-   `castor-garage-k8s-infra`, aplica `k8s/api/` com a tag da imagem do commit,
-   aguarda o rollout, descobre o hostname do Network Load Balancer, faz um
-   smoke test em `/health` e verifica o `HorizontalPodAutoscaler`.
+   aponta o `kubectl` para o cluster EKS ja provisionado por
+   `infra/aws`, aplica `k8s/api/` com a tag da imagem do commit, aguarda o
+   rollout, descobre o hostname do Network Load Balancer, faz um smoke test
+   em `/health` e verifica o `HorizontalPodAutoscaler`.
 
 Esse job publica a nova versao a cada push num ambiente **persistente** na
 AWS — o cluster fica no ar entre execucoes, pronto pra usar no video
