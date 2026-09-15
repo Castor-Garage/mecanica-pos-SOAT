@@ -104,8 +104,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      # O cluster EKS ja existe — provisionado uma unica vez via
-      # `infra/aws` (terraform apply), rodado manualmente antes da gravacao.
+      # O cluster EKS ja existe — provisionado pelo repo `castor-garage-k8s-infra`
+      # (terraform apply), rodado manualmente antes da gravacao.
       # Este job so publica a nova imagem nele, nao cria/destroi infra.
       - name: Configurar credenciais AWS (sessao temporaria do Academy)
         uses: aws-actions/configure-aws-credentials@v4
