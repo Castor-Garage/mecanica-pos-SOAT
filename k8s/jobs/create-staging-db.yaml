@@ -21,6 +21,28 @@ spec:
           command: ["sh", "-c"]
           args:
             - |
-              psql "$ADMIN_DATABASE_URL" -tc \
+              # Parse da connection string: postgresql://user:pass@host:port/db?params
+              # Usa PGPASSWORD pra evitar prompt de senha
+              set -e
+
+              CONNSTR="$ADMIN_DATABASE_URL"
+              # Remove o prefixo postgresql://
+              CONNSTR="${CONNSTR#postgresql://}"
+              # Extrai user:pass
+              USERPASS="${CONNSTR%%@*}"
+              USER="${USERPASS%%:*}"
+              PASS="${USERPASS##*:}"
+              # Extrai host:port
+              HOSTPART="${CONNSTR#*@}"
+              HOST="${HOSTPART%%:*}"
+              PORT="${HOSTPART##*:}"
+              PORT="${PORT%%/*}"
+
+              export PGPASSWORD="$PASS"
+
+              # Verifica se database existe
+              psql -h "$HOST" -p "$PORT" -U "$USER" -d postgres -tc \
                 "SELECT 1 FROM pg_database WHERE datname='mecanica_db_staging'" | grep -q 1 \
-                || psql "$ADMIN_DATABASE_URL" -c "CREATE DATABASE mecanica_db_staging"
+                || psql -h "$HOST" -p "$PORT" -U "$USER" -d postgres -c "CREATE DATABASE mecanica_db_staging"
+
+              echo "✅ Database mecanica_db_staging verificado/criado"
