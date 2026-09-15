@@ -2,6 +2,8 @@ node_modules/
 dist/
 .env
 .env.local
+.env.test
+aws.txt
 coverage/
 *.log
 .DS_Store
@@ -15,3 +17,6 @@ infra/aws/.terraform/
 infra/aws/*.tfstate
 infra/aws/*.tfstate.*
 infra/aws/*.tfplan
+
+# Kustomize secrets (gerados por CI, nunca commitados)
+k8s/api/overlays/*/secret.env

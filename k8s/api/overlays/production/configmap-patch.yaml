@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: castor-garage-config
+data:
+  NODE_ENV: "production"
+  POSTGRES_DB: "mecanica_db"
