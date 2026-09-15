@@ -433,3 +433,4 @@ Cliente tentando acessar OS de outro cliente recebe `404`, igual a uma OS inexis
 ### Utilitarios
 - `GET /health`
 - `GET /docs` — Swagger UI
+# Secrets aplicados, retry staging
