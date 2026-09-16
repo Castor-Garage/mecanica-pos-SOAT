@@ -4,9 +4,13 @@ dist/
 .env.local
 .env.test
 aws.txt
+aws.env
 coverage/
 *.log
 .DS_Store
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/.terraform/
 
 # Kustomize secrets (gerados por CI, nunca commitados)
 k8s/api/overlays/*/secret.env
