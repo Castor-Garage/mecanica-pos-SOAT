@@ -9,16 +9,13 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://workshop:workshop@db:5432/mecanica_db
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
       NODE_ENV: production
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@oficina.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@123}
-    depends_on:
-      db:
-        condition: service_healthy
     restart: unless-stopped
+<<<<<<< HEAD
 
   db:
     image: postgres:16-alpine
@@ -37,5 +34,24 @@ services:
       timeout: 5s
       retries: 10
 
+  newrelic-infra:
+    image: newrelic/infrastructure:latest
+    container_name: newrelic-infra
+    cap_add:
+      - SYS_PTRACE
+    network_mode: host
+    pid: host
+    privileged: true
+    volumes:
+      - "/:/host:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    env_file:
+      - .env
+    environment:
+      NRIA_LICENSE_KEY: ${NEW_RELIC_DOCKER}
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+=======
+>>>>>>> cf04a17 (chore: remove infra de k8s/banco de dados orfa deste repositorio)

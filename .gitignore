@@ -8,15 +8,5 @@ coverage/
 *.log
 .DS_Store
 
-# Terraform
-infra/.terraform/
-infra/*.tfstate
-infra/*.tfstate.*
-infra/*.tfplan
-infra/aws/.terraform/
-infra/aws/*.tfstate
-infra/aws/*.tfstate.*
-infra/aws/*.tfplan
-
 # Kustomize secrets (gerados por CI, nunca commitados)
 k8s/api/overlays/*/secret.env
