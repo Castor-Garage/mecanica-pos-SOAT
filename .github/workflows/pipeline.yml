@@ -119,6 +119,20 @@ jobs:
       - name: Aplicar manifesto de namespace
         run: kubectl apply -f k8s/api/overlays/production/namespace.yaml
 
+      - name: Criar/Atualizar secrets no Kubernetes (production)
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        run: |
+          kubectl create secret generic castor-garage-secret \
+            --from-literal=NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY}" \
+            --from-literal=JWT_SECRET="${JWT_SECRET:-change-this-to-a-strong-random-secret-in-production}" \
+            --from-literal=DATABASE_URL="${DATABASE_URL:-postgresql://workshop:workshop@postgres:5432/mecanica_db}" \
+            --from-literal=ADMIN_PASSWORD="${ADMIN_PASSWORD:-Admin@123}" \
+            --from-literal=WEBHOOK_SECRET="${WEBHOOK_SECRET:-}" \
+            --from-literal=POSTGRES_PASSWORD="workshop" \
+            -n castor-garage-production \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Patch da tag de imagem (production)
         run: |
           sed -i "s/newTag:.*/newTag: ${GITHUB_SHA}/" k8s/api/overlays/production/kustomization.yaml
@@ -192,6 +206,20 @@ jobs:
 
       - name: Aplicar manifesto de namespace (staging)
         run: kubectl apply -f k8s/api/overlays/staging/namespace.yaml
+
+      - name: Criar/Atualizar secrets no Kubernetes (staging)
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        run: |
+          kubectl create secret generic castor-garage-secret \
+            --from-literal=NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY}" \
+            --from-literal=JWT_SECRET="${JWT_SECRET:-change-this-to-a-strong-random-secret-in-production}" \
+            --from-literal=DATABASE_URL="${DATABASE_URL:-postgresql://workshop:workshop@postgres:5432/mecanica_db}" \
+            --from-literal=ADMIN_PASSWORD="${ADMIN_PASSWORD:-Admin@123}" \
+            --from-literal=WEBHOOK_SECRET="${WEBHOOK_SECRET:-}" \
+            --from-literal=POSTGRES_PASSWORD="workshop" \
+            -n castor-garage-staging \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deletar Job anterior de bootstrap (evita template imutável)
         run: kubectl delete job create-staging-db -n castor-garage-staging --ignore-not-found
