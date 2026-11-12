@@ -1,5 +1,5 @@
 flowchart TB
-  Cliente["Cliente / Front-end"]
+  Cliente["Cliente / Front-end (mecanica-front-POS-SOAT)"]
   Admin["Admin / Painel"]
 
   subgraph GW["API Gateway (AWS API Gateway HTTP API)"]
@@ -7,7 +7,7 @@ flowchart TB
     RouteProxy["ANY /{proxy+} (Lambda authorizer JWT)"]
   end
 
-  subgraph L["castor-garage-auth-lambda (repo 1)"]
+  subgraph L["mecanica-auth-lambda-SOAT"]
     AuthFn["Lambda: authenticateByCpf"]
     AuthzFn["Lambda: jwtAuthorizer"]
   end
@@ -15,58 +15,108 @@ flowchart TB
   Cliente -->|CPF| RouteAuth --> AuthFn
   Cliente -->|Bearer JWT| RouteProxy
   RouteProxy -. valida token .-> AuthzFn
-  RouteProxy -->|proxy HTTP / VPC Link| Deploy
+  RouteProxy -->|proxy HTTP / VPC Link| OSDeploy
 
-  subgraph EKS["Cluster EKS (castor-garage-k8s-infra, repo 2)"]
+  subgraph EKS["Cluster EKS (mecanica-k8s-infra-SOAT)"]
     direction TB
     NS_S["namespace castor-garage-staging"]
     NS_P["namespace castor-garage-production"]
     subgraph NS_P
-      HPA["HPA 2-10 replicas (CPU 70% / mem 80%)"] -. escala .-> Deploy["Deployment castor-garage-api"]
-      Svc["Service"] --> Deploy
+      OSDeploy["Deployment: OS Service"]
+      BillDeploy["Deployment: Billing Service"]
+      ExecDeploy["Deployment: Execucao Service"]
     end
   end
 
-  subgraph APP["mecanica-pos-SOAT (repo 4) - Clean Architecture"]
-    Routes["Routes"] --> UseCases["Use Cases"] --> Domain["Domain"]
-    UseCases --> Repos["Prisma Repositories"]
+  subgraph OS_APP["OS Service (mecanica-pos-SOAT) - Clean Architecture"]
+    OSRoutes["Routes HTTP"] --> OSUseCases["Use Cases + Orquestrador da Saga"] --> OSDomain["Domain (OSStatus)"]
+    OSUseCases --> OSRepos["Prisma Repositories"]
   end
 
-  Deploy -. roda .-> APP
-
-  subgraph DB["RDS PostgreSQL (castor-garage-db-infra, repo 3)"]
-    RDS[("mecanica_db")]
+  subgraph BILL_APP["Billing Service (mecanica-billing-SOAT)"]
+    BillConsumer["Consumer: GerarOrcamento"] --> BillUseCases["Use Cases (orcamento/pagamento)"]
+    BillUseCases --> MP["Mercado Pago (Checkout)"]
+    BillUseCases --> BillRepos["Repositories (SQL + NoSQL)"]
   end
 
-  Repos --> RDS
-  AuthFn -->|SELECT status by document| RDS
+  subgraph EXEC_APP["Execucao Service (mecanica-execucao-SOAT)"]
+    ExecConsumer["Consumer: IniciarExecucao"] --> ExecUseCases["Use Cases (fila/diagnostico)"]
+    ExecUseCases --> ExecRepos["Prisma Repositories"]
+  end
+
+  OSDeploy -. roda .-> OS_APP
+  BillDeploy -. roda .-> BILL_APP
+  ExecDeploy -. roda .-> EXEC_APP
+
+  subgraph MQ["Amazon SQS (provisionado em mecanica-k8s-infra-SOAT)"]
+    Q1[["billing-commands"]]
+    Q2[["execucao-commands"]]
+    Q3[["os-events (fan-in)"]]
+  end
+
+  OSUseCases -->|GerarOrcamento| Q1 --> BillConsumer
+  OSUseCases -->|IniciarExecucao| Q2 --> ExecConsumer
+  BillUseCases -->|OrcamentoGerado/PagamentoConfirmado/Falhou| Q3
+  ExecUseCases -->|ExecucaoFinalizada/Falhou| Q3
+  Q3 --> OSUseCases
+
+  subgraph DB_OS["RDS PostgreSQL - OS (mecanica-db-infra-SOAT)"]
+    RDS_OS[("mecanica_os_db")]
+  end
+
+  subgraph DB_BILL["Bancos do Billing"]
+    RDS_BILL[("RDS Postgres: orcamento/pagamento")]
+    NOSQL_BILL[("MongoDB/DynamoDB: webhooks Mercado Pago")]
+  end
+
+  subgraph DB_EXEC["RDS PostgreSQL - Execucao"]
+    RDS_EXEC[("mecanica_execucao_db")]
+  end
+
+  OSRepos --> RDS_OS
+  BillRepos --> RDS_BILL
+  BillRepos --> NOSQL_BILL
+  ExecRepos --> RDS_EXEC
+
+  AuthFn -->|SELECT status by document| RDS_OS
   AuthFn -->|SSM: jwt-secret| SSM[("SSM Parameter Store")]
   AuthzFn -->|SSM: jwt-secret| SSM
-  Deploy -->|SSM via deploy job| SSM
+  OSDeploy -->|SSM via deploy job| SSM
 
   subgraph OBS["New Relic"]
-    APM["APM (agente Node.js)"]
+    APM["APM (agente Node.js) - replicado nos 3 servicos"]
     Infra["Infra/K8s integration (helm nri-bundle)"]
     Synth["Synthetics: GET /health"]
-    Dash["Dashboards: volume de OS, tempo por status, erros, latencia/CPU/mem"]
-    Alert["Alertas: service_order.processing_failed"]
+    Dash["Dashboards: volume de OS, tempo por status/evento, erros, latencia/CPU/mem"]
+    Alert["Alertas: service_order.processing_failed, saga presa em status intermediario"]
   end
 
-  APP -. logs JSON + requestId .-> Infra
-  APP -. traces/metrics .-> APM
+  OS_APP -. logs JSON + requestId .-> Infra
+  BILL_APP -. logs JSON + requestId .-> Infra
+  EXEC_APP -. logs JSON + requestId .-> Infra
+  OS_APP -. traces/metrics .-> APM
+  BILL_APP -. traces/metrics .-> APM
+  EXEC_APP -. traces/metrics .-> APM
   APM --> Dash
   Infra --> Dash
   Dash --> Alert
 
-  subgraph CICD["CI/CD - 4 repositorios (GitHub Actions)"]
+  subgraph CICD["CI/CD - 1 pipeline por repositorio (GitHub Actions)"]
     direction LR
-    P1["repo 1: test -> package -> terraform apply"]
-    P2["repo 2: fmt/validate -> plan -> apply"]
-    P3["repo 3: fmt/validate -> plan -> apply"]
-    P4["repo 4: test -> build (GHCR) -> deploy (kustomize)"]
+    P1["auth-lambda: test -> package -> terraform apply"]
+    P2["k8s-infra: fmt/validate -> plan -> apply (inclui filas SQS)"]
+    P3["db-infra: fmt/validate -> plan -> apply"]
+    P4["OS Service: test -> sonar -> build (GHCR) -> deploy (kustomize)"]
+    P5["Billing Service: test -> sonar -> build (GHCR) -> deploy (kustomize)"]
+    P6["Execucao Service: test -> sonar -> build (GHCR) -> deploy (kustomize)"]
   end
 
   P1 -. publica .-> L
   P2 -. provisiona .-> EKS
-  P3 -. provisiona .-> DB
-  P4 -. publica imagem + aplica overlay .-> Deploy
+  P2 -. provisiona .-> MQ
+  P3 -. provisiona .-> DB_OS
+  P3 -. provisiona .-> DB_BILL
+  P3 -. provisiona .-> DB_EXEC
+  P4 -. publica imagem + aplica overlay .-> OSDeploy
+  P5 -. publica imagem + aplica overlay .-> BillDeploy
+  P6 -. publica imagem + aplica overlay .-> ExecDeploy
