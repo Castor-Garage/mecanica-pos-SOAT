@@ -1,6 +1,9 @@
 # RFC 0002 — Banco de dados gerenciado
 
-- **Status**: Aceito
+- **Status**: Aceito para o escopo descrito abaixo; complementado pelo
+  RFC 0004 (Fase 4), que mantém PostgreSQL para o OS Service pelos
+  mesmos motivos aqui descritos, mas introduz banco próprio por
+  microsserviço e um banco NoSQL no Billing Service.
 - **Autores**: Time Castor Garage
 - **Relacionado a**: ADR 0004 (RDS vs banco em cluster), `docs/modelo-dominio.mmd`
 
