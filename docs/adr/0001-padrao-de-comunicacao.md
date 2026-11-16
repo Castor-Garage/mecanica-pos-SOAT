@@ -1,6 +1,11 @@
 # ADR 0001 — Padrão de comunicação entre os componentes
 
-- **Status**: Aceito
+- **Status**: Aceito para o escopo descrito abaixo; parcialmente
+  superado pelo ADR 0006 (Fase 4), que introduz mensageria assíncrona
+  (Amazon SQS) para o fluxo transacional entre OS Service, Billing
+  Service e Execução/Produção Service. As decisões abaixo continuam
+  valendo para auth (Lambda) e para chamadas síncronas cliente/front →
+  OS Service.
 
 ## Contexto
 
