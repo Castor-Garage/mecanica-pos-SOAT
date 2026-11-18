@@ -119,14 +119,29 @@ jobs:
       - name: Aplicar manifesto de namespace
         run: kubectl apply -f k8s/api/overlays/production/namespace.yaml
 
-      # castor-garage-secret so e aplicado manualmente nesse namespace (ver
-      # README) - so a chave da New Relic e mantida em dia aqui, via patch
-      # (nao mexe nas outras chaves ja existentes, como DATABASE_URL/JWT_SECRET).
-      - name: Atualizar license key da New Relic no Secret (production)
+      # castor-garage-secret e (re)criado a cada deploy, sem nada aplicado a mao
+      # no cluster: o banco vem do SSM publicado por mecanica-db-infra-SOAT e o
+      # resto dos secrets do GitHub (JWT_SECRET precisa ser o mesmo do
+      # mecanica-auth-lambda-SOAT, que assina os tokens). Le cada valor numa
+      # variavel antes de montar o Secret para o step falhar se faltar algum.
+      - name: Montar Secret do servico a partir do SSM (production)
         run: |
-          kubectl --context "${EKS_CLUSTER}" -n castor-garage-production patch secret castor-garage-secret \
-            --type merge -p "{\"stringData\":{\"NEW_RELIC_LICENSE_KEY\":\"${NEW_RELIC_LICENSE_KEY}\"}}"
+          ssm() { aws ssm get-parameter --name "$1" --with-decryption --query Parameter.Value --output text; }
+          DATABASE_URL=$(ssm /castor-garage/database-url)
+          echo "::add-mask::${DATABASE_URL}"
+          : "${JWT_SECRET:?secret JWT_SECRET nao configurado no GitHub}"
+          : "${ADMIN_PASSWORD:?secret ADMIN_PASSWORD nao configurado no GitHub}"
+          kubectl --context "${EKS_CLUSTER}" -n castor-garage-production create secret generic castor-garage-secret \
+            --from-literal=DATABASE_URL="${DATABASE_URL}" \
+            --from-literal=JWT_SECRET="${JWT_SECRET}" \
+            --from-literal=ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+            --from-literal=WEBHOOK_SECRET="${WEBHOOK_SECRET}" \
+            --from-literal=NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY}" \
+            --dry-run=client -o yaml | kubectl --context "${EKS_CLUSTER}" apply -f -
         env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
 
       - name: Patch da tag de imagem (production)
@@ -203,14 +218,33 @@ jobs:
       - name: Aplicar manifesto de namespace (staging)
         run: kubectl apply -f k8s/api/overlays/staging/namespace.yaml
 
-      # castor-garage-secret so e aplicado manualmente nesse namespace (ver
-      # README) - so a chave da New Relic e mantida em dia aqui, via patch
-      # (nao mexe nas outras chaves ja existentes, como DATABASE_URL/JWT_SECRET).
-      - name: Atualizar license key da New Relic no Secret (staging)
+      # Mesmo esquema do deploy de producao, com o database de staging. O
+      # ADMIN_DATABASE_URL (usado so pelo Job create-staging-db, via psql) aponta
+      # para o database de producao, que ja existe, para conseguir criar o de
+      # staging; vai sem os parametros de query do Node (uselibpqcompat), que o
+      # psql nao aceita.
+      - name: Montar Secret do servico a partir do SSM (staging)
         run: |
-          kubectl --context "${EKS_CLUSTER}" -n castor-garage-staging patch secret castor-garage-secret \
-            --type merge -p "{\"stringData\":{\"NEW_RELIC_LICENSE_KEY\":\"${NEW_RELIC_LICENSE_KEY}\"}}"
+          ssm() { aws ssm get-parameter --name "$1" --with-decryption --query Parameter.Value --output text; }
+          DATABASE_URL=$(ssm /castor-garage/database-url-staging)
+          echo "::add-mask::${DATABASE_URL}"
+          PRODUCTION_DATABASE_URL=$(ssm /castor-garage/database-url)
+          ADMIN_DATABASE_URL="${PRODUCTION_DATABASE_URL%%\?*}?sslmode=require"
+          echo "::add-mask::${ADMIN_DATABASE_URL}"
+          : "${JWT_SECRET:?secret JWT_SECRET nao configurado no GitHub}"
+          : "${ADMIN_PASSWORD:?secret ADMIN_PASSWORD nao configurado no GitHub}"
+          kubectl --context "${EKS_CLUSTER}" -n castor-garage-staging create secret generic castor-garage-secret \
+            --from-literal=DATABASE_URL="${DATABASE_URL}" \
+            --from-literal=ADMIN_DATABASE_URL="${ADMIN_DATABASE_URL}" \
+            --from-literal=JWT_SECRET="${JWT_SECRET}" \
+            --from-literal=ADMIN_PASSWORD="${ADMIN_PASSWORD}" \
+            --from-literal=WEBHOOK_SECRET="${WEBHOOK_SECRET}" \
+            --from-literal=NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY}" \
+            --dry-run=client -o yaml | kubectl --context "${EKS_CLUSTER}" apply -f -
         env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
 
       - name: Deletar Job anterior de bootstrap (evita template imutável)
