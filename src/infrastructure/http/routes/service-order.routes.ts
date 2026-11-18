@@ -48,6 +48,13 @@ const orderListSchema = z.object({
   quoteTotalAmount: z.number().nullable(),
   quoteApprovedAt: z.date().nullable(),
   quoteRejectedAt: z.date().nullable(),
+  // Referencias da saga assincrona com Billing/Execução (ver ADR 0006) -
+  // preenchidas pelo orquestrador (sagaConsumer.ts), uteis para acompanhar
+  // o andamento da saga por fora (ex. demo, suporte).
+  billingQuoteId: z.string().nullable(),
+  billingPaymentId: z.string().nullable(),
+  checkoutUrl: z.string().nullable(),
+  paymentConfirmedAt: z.date().nullable(),
   startedAt: z.date().nullable(),
   completedAt: z.date().nullable(),
   deliveredAt: z.date().nullable(),
