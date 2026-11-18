@@ -54,16 +54,7 @@ export async function handleOsEvent(
       break
 
     case 'PagamentoConfirmado':
-      await serviceOrderRepo.setSagaReferences(event.serviceOrderId, {
-        billingPaymentId: event.paymentId,
-        paymentConfirmedAt: new Date(),
-      })
-      // Proximo passo da saga: aciona o Execução Service para abrir a fila
-      // de execucao desta OS (ver ADR 0006).
-      await bus.publish<IniciarExecucaoCommand>(EXECUCAO_COMMANDS_QUEUE, {
-        type: 'IniciarExecucao',
-        serviceOrderId: event.serviceOrderId,
-      })
+      await triggerExecucaoAfterPayment(serviceOrderRepo, bus, event.serviceOrderId, event.paymentId)
       break
 
     case 'PagamentoFalhou':
@@ -88,6 +79,35 @@ export async function handleOsEvent(
       )
       break
   }
+}
+
+// Acionado tanto pelo evento PagamentoConfirmado (os-events) quanto pelo
+// callback sincrono POST /internal/payment-confirmed que o Billing chama
+// como fallback quando o SQS nao esta disponivel (ver internal.routes.ts) -
+// os dois caminhos convergem aqui. Idempotente via paymentConfirmedAt: so
+// publica IniciarExecucao na primeira vez, para nao abrir a fila de
+// execucao duas vezes quando ambos os caminhos chegam para a mesma OS.
+export async function triggerExecucaoAfterPayment(
+  serviceOrderRepo: IServiceOrderRepository,
+  bus: IMessageBus,
+  serviceOrderId: string,
+  paymentId?: string,
+): Promise<void> {
+  const order = await serviceOrderRepo.findById(serviceOrderId)
+  if (!order) return
+  if (order.paymentConfirmedAt) return
+
+  await serviceOrderRepo.setSagaReferences(serviceOrderId, {
+    ...(paymentId ? { billingPaymentId: paymentId } : {}),
+    paymentConfirmedAt: new Date(),
+  })
+
+  // Proximo passo da saga: aciona o Execução Service para abrir a fila de
+  // execucao desta OS (ver ADR 0006).
+  await bus.publish<IniciarExecucaoCommand>(EXECUCAO_COMMANDS_QUEUE, {
+    type: 'IniciarExecucao',
+    serviceOrderId,
+  })
 }
 
 async function advanceToFinalizada(

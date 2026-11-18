@@ -98,6 +98,7 @@ describe('Saga - fluxo completo (orquestrador do OS Service)', () => {
   })
 
   it('Quando o pagamento é confirmado, Então a OS aciona o Execução Service com IniciarExecucao', async () => {
+    vi.mocked(repo.findById).mockResolvedValueOnce(baseOrder({ status: OSStatus.AGUARDANDO_APROVACAO }))
     const received: unknown[] = []
     bus.subscribe(EXECUCAO_COMMANDS_QUEUE, async (msg) => {
       received.push(msg)
@@ -117,6 +118,28 @@ describe('Saga - fluxo completo (orquestrador do OS Service)', () => {
       expect.objectContaining({ billingPaymentId: 'payment-1' }),
     )
     expect(received).toEqual([{ type: 'IniciarExecucao', serviceOrderId: 'os-1' }])
+  })
+
+  it('é idempotente: PagamentoConfirmado repetido (ex. callback HTTP do Billing + evento SQS) não abre a execução duas vezes', async () => {
+    vi.mocked(repo.findById).mockResolvedValueOnce(
+      baseOrder({ status: OSStatus.EM_EXECUCAO, paymentConfirmedAt: new Date('2026-01-01') }),
+    )
+    const received: unknown[] = []
+    bus.subscribe(EXECUCAO_COMMANDS_QUEUE, async (msg) => {
+      received.push(msg)
+    })
+
+    const event: OsEvent = {
+      type: 'PagamentoConfirmado',
+      serviceOrderId: 'os-1',
+      quoteId: 'quote-1',
+      paymentId: 'payment-1',
+    }
+
+    await handleOsEvent(event, repo, bus, noopLogger)
+
+    expect(repo.setSagaReferences).not.toHaveBeenCalled()
+    expect(received).toEqual([])
   })
 
   it('Quando o Execução Service finaliza, Então a OS avança para FINALIZADA', async () => {
