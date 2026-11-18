@@ -5,6 +5,7 @@ import { buildServer } from './infrastructure/http/server.js'
 
 const app = buildServer()
 
+// Deploy video apresentacao
 const port = parseInt(process.env.PORT ?? '3000', 10)
 const host = process.env.HOST ?? '0.0.0.0'
 

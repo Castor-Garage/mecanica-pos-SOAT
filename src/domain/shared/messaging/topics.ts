@@ -1,7 +1,10 @@
-// Contrato de mensageria do OS Service (orquestrador da saga - ver ADR 0006).
-// Espelha, lado a lado, os contratos definidos em mecanica-billing-SOAT e
-// mecanica-execucao-SOAT - qualquer mudanca de formato aqui precisa ser
-// coordenada com os dois repositorios.
+// Contrato de mensageria do Saga Pattern (ver ADR 0006): nomes de fila e
+// formato das mensagens trocadas entre o OS Service (este repositorio, que
+// orquestra a saga) e os microsservicos de Billing e Execucao. Cada um
+// daqueles repositorios mantem sua propria copia deste contrato (ainda nao
+// ha um pacote npm compartilhado entre os 3) - qualquer mudanca de formato
+// aqui precisa ser replicada manualmente em mecanica-billing-SOAT e
+// mecanica-execucao-SOAT.
 
 export const BILLING_COMMANDS_QUEUE = 'billing-commands'
 export const EXECUCAO_COMMANDS_QUEUE = 'execucao-commands'
@@ -36,16 +39,30 @@ export type BillingCommand =
   | AprovarOrcamentoCommand
   | RejeitarOrcamentoCommand
 
-// ---- Comandos publicados pelo OS Service para o Execução Service ----
+// ---- Comandos publicados pelo OS Service para o Execucao/Producao Service ----
 
 export interface IniciarExecucaoCommand {
   type: 'IniciarExecucao'
   serviceOrderId: string
 }
 
-export type ExecucaoCommand = IniciarExecucaoCommand
+export interface AvancarExecucaoCommand {
+  type: 'AvancarExecucao'
+  executionId: string
+}
 
-// ---- Eventos consumidos pelo OS Service em os-events ----
+export interface FalharExecucaoCommand {
+  type: 'FalharExecucao'
+  executionId: string
+  reason: string
+}
+
+export type ExecucaoCommand =
+  | IniciarExecucaoCommand
+  | AvancarExecucaoCommand
+  | FalharExecucaoCommand
+
+// ---- Eventos publicados por Billing/Execucao, consumidos pelo OS Service ----
 
 export interface OrcamentoGeradoEvent {
   type: 'OrcamentoGerado'

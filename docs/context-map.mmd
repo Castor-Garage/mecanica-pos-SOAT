@@ -1,28 +1,39 @@
 flowchart LR
-    subgraph Cadastro
-        C1[Cliente]
-        C2[Veiculo]
-        C3[Admin]
+    subgraph OS_SERVICE["OS Service (mecanica-pos-SOAT)"]
+        subgraph Cadastro
+            C1[Cliente]
+            C2[Veiculo]
+            C3[Admin]
+        end
+
+        subgraph Catalogo
+            K1[Servico]
+            K2[Peca/Insumo]
+        end
+
+        subgraph Atendimento
+            A1[Abertura da OS]
+            A2[Identificacao Cliente/Veiculo]
+            A3[Descricao do Problema]
+        end
+
+        subgraph Orquestracao_Saga
+            E1[Ordem de Servico]
+            E5[Historico de Status]
+            E6[Entrega]
+            ORQ[Orquestrador da Saga]
+        end
     end
 
-    subgraph Catalogo
-        K1[Servico]
-        K2[Peca/Insumo]
-    end
-
-    subgraph Atendimento
-        A1[Abertura da OS]
-        A2[Identificacao Cliente/Veiculo]
-        A3[Descricao do Problema]
-    end
-
-    subgraph Execucao_OS
-        E1[Ordem de Servico]
+    subgraph BILLING_SERVICE["Billing Service (mecanica-billing-SOAT)"]
         E2[Orcamento]
         E3[Aprovacao/Rejeicao]
-        E4[Execucao]
-        E5[Historico de Status]
-        E6[Entrega]
+        PAY[Pagamento / Mercado Pago]
+    end
+
+    subgraph EXECUCAO_SERVICE["Execucao/Producao Service (mecanica-execucao-SOAT)"]
+        E4[Fila de Execucao]
+        DIAG[Diagnostico/Reparo]
     end
 
     C1 --> A2
@@ -33,11 +44,18 @@ flowchart LR
     A2 --> E1
     A3 --> E1
 
+    E1 --> ORQ
+
+    ORQ -->|comando: GerarOrcamento - SQS billing-commands| E2
     K1 --> E2
     K2 --> E2
-
-    E1 --> E2
     E2 --> E3
-    E3 --> E4
-    E4 --> E5
+    E3 --> PAY
+    PAY -->|evento: PagamentoConfirmado/Falhou - SQS os-events| ORQ
+
+    ORQ -->|comando: IniciarExecucao - SQS execucao-commands| E4
+    E4 --> DIAG
+    DIAG -->|evento: ExecucaoFinalizada/Falhou - SQS os-events| ORQ
+
+    ORQ --> E5
     E5 --> E6

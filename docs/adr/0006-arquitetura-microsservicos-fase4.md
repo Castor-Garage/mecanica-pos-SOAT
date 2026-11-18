@@ -1,66 +1,81 @@
-# ADR 0006 — Arquitetura de microsserviços (Fase 4): split em 3 serviços e saga orquestrada
+# ADR 0006 — Arquitetura de microsserviços e Saga Pattern (Fase 4)
 
-- **Status**: Aceito
-- **Supersede**: ADR 0001 (padrão de comunicação), no que diz respeito à
-  comunicação entre serviços — permanece válido para a comunicação
-  HTTP/cliente deste repositório
-- **Autores**: Time Castor Garage
-- **Relacionado a**: RFC 0004 (banco por serviço), `docs/context-map.mmd`,
-  `docs/component-diagram.mmd`
+- **Status**: Aceito (decisão) / Implementado (orquestração no OS Service)
+- **Supersede**: ADR 0001 (padrão de comunicação)
 
 ## Contexto
 
-A Fase 4 exige transformar a aplicação única (`mecanica-pos-SOAT`) em no
-mínimo 3 microsserviços independentes (repositório, banco e infraestrutura
-próprios), comunicação assíncrona entre eles, Saga Pattern para o fluxo
-orçamento → aprovação → pagamento → execução, e pelo menos um banco não
-relacional no conjunto.
+A Fase 4 exige refatorar a aplicação única (`mecanica-pos-SOAT`) para um
+modelo distribuído: no mínimo 3 microsserviços independentes, cada um com
+repositório, infraestrutura e banco próprios, com consistência
+transacional entre as etapas críticas (abertura de OS, aprovação de
+orçamento, pagamento, execução) garantida por um Saga Pattern com
+rollback/compensação.
+
+Antes da Fase 4, a comunicação entre componentes era toda síncrona via
+HTTP (ADR 0001) e o fluxo de OS → orçamento → aprovação → execução
+acontecia inteiro dentro de um único processo e uma única transação de
+banco (`CreateServiceOrderUseCase`, `ApproveQuoteUseCase`, máquina de
+estados `OSStatus`). Não existia conceito de pagamento/cobrança nem de
+fila de execução como serviço separado.
 
 ## Decisão
 
-### Divisão de serviços
+### Separação em 3 microsserviços
 
-- **OS Service** (este repositório) — mantém `client`, `vehicle`,
-  `service`, `part`, `admin`/auth **e** o agregado `ServiceOrder`. É o
-  **orquestrador da saga**: único dono da máquina de estados da OS
-  (`OSStatus`).
-- **Billing Service** (`mecanica-billing-SOAT`) — orçamento, aprovação e
-  pagamento (Mercado Pago). Banco próprio (Postgres) + NoSQL (ver RFC 0004).
-- **Execução/Produção Service** (`mecanica-execucao-SOAT`) — fila de
-  execução (diagnóstico → execução → finalizada). Banco próprio (Postgres).
+| Serviço | Repositório | Responsabilidade | Banco |
+|---|---|---|---|
+| **OS Service** | `mecanica-pos-SOAT` (este repo, podado) | Abertura/consulta/status/histórico de OS, cadastro (cliente/veículo), catálogo (serviço/peça), admin/auth, e **orquestração da saga** | PostgreSQL (mantém o atual) |
+| **Billing Service** | `mecanica-billing-SOAT` | Geração de orçamento, aprovação, registro e verificação de pagamento, integração com Mercado Pago | PostgreSQL (orçamento/pagamento) + DynamoDB (webhooks e tentativas de pagamento — ver RFC 0004) |
+| **Execução/Produção Service** | `mecanica-execucao-SOAT` | Fila de execução da OS, status de diagnóstico/reparo, aviso de finalização | PostgreSQL |
 
-Cadastro/catálogo/admin permaneceram no OS Service (não viraram um 4º
-serviço) para não multiplicar repositórios/pipelines além do mínimo exigido
-— nenhum dos dois domínios troca de dono ao longo do fluxo de uma OS, então
-não há ganho de isolamento em separá-los.
+O OS Service continua sendo a única fachada HTTP pública para
+cliente/front-end e admin; Billing e Execução não expõem API pública,
+apenas consomem/publicam mensagens (exceto o webhook do Mercado Pago, que
+chega direto no Billing Service).
 
-### Mensageria
+### Comunicação: mensageria assíncrona via Amazon SQS
 
-Amazon SQS, 3 filas, abstraídas atrás da porta `IMessageBus`
-(`publish`/`subscribe`) em cada um dos 3 serviços:
+Substitui, para o fluxo transacional da OS, o modelo 100% síncrono do
+ADR 0001 (que permanece válido apenas para: cliente → API Gateway →
+Lambda de auth, e para consultas pontuais do front-end ao OS Service).
 
-| Fila | Publica | Consome |
-|---|---|---|
-| `billing-commands` | OS Service (`GerarOrcamento`, `AprovarOrcamento`, `RejeitarOrcamento`) | Billing Service |
-| `execucao-commands` | OS Service (`IniciarExecucao`) | Execução Service |
-| `os-events` | Billing Service (`OrcamentoGerado`, `OrcamentoRejeitado`, `PagamentoPendente`, `PagamentoConfirmado`, `PagamentoFalhou`) e Execução Service (`ExecucaoFinalizada`, `ExecucaoFalhou`) | OS Service |
+Três filas, com o contrato espelhado em `src/domain/shared/messaging/topics.ts`
+em cada um dos 3 repositórios (ainda não há um pacote npm compartilhado):
 
-Dois adapters por serviço: `InMemoryMessageBus` (testes/dev, roda só dentro
-do próprio processo) e `SqsMessageBus` (produção — long polling real via
-`@aws-sdk/client-sqs`). A escolha é feita em `bus.ts` pela variável
-`MESSAGE_BUS_DRIVER=sqs`; sem ela, usa o adapter em memória. `SqsMessageBus`
-aceita `SQS_ENDPOINT` para apontar para um endpoint compatível com SQS (ex.
-LocalStack), o que permite rodar a saga real localmente sem depender da
-conta AWS Academy — ver `docs/demo-local-saga.md`.
+- **`billing-commands`** (OS Service → Billing Service): `GerarOrcamento`,
+  `AprovarOrcamento`, `RejeitarOrcamento`.
+- **`execucao-commands`** (OS Service → Execução Service): `IniciarExecucao`
+  (também previstos `AvancarExecucao`/`FalharExecucao`, para uso futuro do
+  próprio Execução Service).
+- **`os-events`** (Billing/Execução → OS Service, fan-in): `OrcamentoGerado`,
+  `OrcamentoRejeitado`, `PagamentoPendente`, `PagamentoConfirmado`,
+  `PagamentoFalhou`, `ExecucaoFinalizada`, `ExecucaoFalhou`.
 
-### Saga orquestrada no OS Service
+Nenhum serviço acessa diretamente o banco de outro — toda troca de estado
+entre serviços passa por essas filas.
 
-O OS Service é o único dono da máquina de estados da OS. O `sagaConsumer.ts`
+Cada serviço implementa a porta `IMessageBus` com dois adapters:
+`InMemoryMessageBus` (testes/dev, só funciona dentro do próprio processo)
+e `SqsMessageBus` (produção, long polling real via `@aws-sdk/client-sqs`).
+A escolha é feita em `bus.ts` pela variável `MESSAGE_BUS_DRIVER=sqs`; sem
+ela, usa o adapter em memória. `SqsMessageBus` aceita `SQS_ENDPOINT` para
+apontar para qualquer endpoint compatível com SQS (ex. LocalStack), o que
+permite rodar a saga real localmente sem depender da conta AWS Academy —
+ver [`docs/demo-local-saga.md`](../demo-local-saga.md).
+
+### Saga Pattern: orquestrada no OS Service
+
+Escolhido o modelo **orquestrado** em vez de coreografado: o OS Service já
+é o dono do agregado `ServiceOrder` e da máquina de estados `OSStatus`
+(`src/domain/service-order/value-objects/OSStatus.ts`), então centralizar
+nele a lógica de avançar/compensar a saga evita espalhar regras de
+compensação pelos 3 serviços. `src/infrastructure/messaging/sagaConsumer.ts`
 consome `os-events` e decide a próxima transição/comando — Billing e
 Execução nunca decidem o status da OS, só publicam fatos sobre o que
 aconteceu do lado deles.
 
-Fluxo feliz:
+Fluxo feliz, como implementado:
 
 ```
 OS criada (RECEBIDA)
@@ -78,53 +93,65 @@ OS criada (RECEBIDA)
   → OS avança para FINALIZADA
 ```
 
-Compensação: `PagamentoFalhou` ou `ExecucaoFalhou` cancelam a OS (novo
-status `CANCELADA`, terminal). Essa transição só é acionada pelo
-`sagaConsumer.ts` — os endpoints manuais (`/approve`, `/reject`, `/advance`)
-nunca levam uma OS a `CANCELADA`.
+**Compensação**: se `PagamentoFalhou` ou `ExecucaoFalhou` chegar em
+`os-events`, o `sagaConsumer.ts` cancela a OS (novo status `OSStatus.CANCELADA`,
+terminal) em vez de deixá-la presa no fluxo. Essa transição só é acionada
+pelo orquestrador — os endpoints manuais (`/approve`, `/reject`,
+`/advance`) nunca levam uma OS a `CANCELADA`. Não há rollback de banco
+distribuído (2PC): cada etapa já concluída permanece registrada em seu
+serviço de origem (ex.: orçamento gerado continua existindo no Billing
+mesmo que a OS seja cancelada depois); a compensação é lógica, no nível de
+negócio.
 
 ### Convivência com o fluxo local existente
 
 O OS Service **continua calculando e aprovando o orçamento localmente**
-(como antes da Fase 4) — o catálogo já é resolvido no próprio OS Service ao
-criar a OS, então o `quoteTotalAmount` local existe desde a criação, sem
-depender de rede. Isso é mantido por dois motivos: (1) não quebrar o
+(como antes da Fase 4) — o catálogo já é resolvido no próprio OS Service
+ao criar a OS, então o `quoteTotalAmount` local existe desde a criação,
+sem depender de rede. Isso é mantido por dois motivos: (1) não quebrar o
 contrato já usado pelo front-end e pelos testes existentes; (2) permitir
-que a operação básica da oficina (abrir, diagnosticar, aprovar, executar)
-funcione mesmo se o Billing Service estiver fora do ar.
-
-Em paralelo, o mesmo comando `GerarOrcamento` é publicado para o Billing
-Service, que calcula seu **próprio** orçamento (`Quote`) de forma
-independente — os dois valores devem coincidir, já que usam o mesmo
-catálogo. É o `Quote` do Billing (não o `quoteTotalAmount` local) que vira
-a cobrança real no Mercado Pago. Aprovar/rejeitar localmente aciona o
-comando equivalente no Billing (`AprovarOrcamento`/`RejeitarOrcamento`).
-
-Fica registrado como dívida técnica para uma fase futura: unificar os dois
-caminhos (fazer o OS Service esperar o `OrcamentoGerado` do Billing antes
-de liberar a aprovação), hoje não feito pelo prazo da Fase 4.
+que a operação básica da oficina funcione mesmo se o Billing Service
+estiver fora do ar. Em paralelo, o mesmo comando `GerarOrcamento` é
+publicado para o Billing Service, que calcula seu **próprio** orçamento
+(`Quote`) de forma independente — os dois valores devem coincidir, já que
+usam o mesmo catálogo. É o `Quote` do Billing que vira a cobrança real no
+Mercado Pago. Aprovar/rejeitar localmente aciona o comando equivalente no
+Billing. Fica registrado como dívida técnica unificar os dois caminhos
+numa fase futura.
 
 ## Alternativas consideradas
 
-- **Coreografia pura (sem orquestrador)** — rejeitada: cada serviço
-  reagiria a eventos dos outros sem um dono único da máquina de estados da
-  OS, dificultando raciocinar sobre o estado agregado e sobre quem decide a
-  compensação.
-- **RabbitMQ/Kafka** — rejeitado pelo mesmo motivo do RFC 0001: já usamos
-  AWS Academy/EKS/RDS; SQS é gerenciado e não exige broker próprio para
-  operar sob o prazo da fase.
+- **Saga coreografada (eventos entre os 3 serviços, sem orquestrador)** —
+  rejeitada para este prazo: exigiria que Billing e Execução também
+  conhecessem regras de compensação da OS, duplicando lógica que hoje já
+  vive centralizada em `OSStatus`.
+- **RabbitMQ/Kafka auto-hospedados** — rejeitados: exigiriam provisionar e
+  operar um broker no cluster EKS (Academy) sob prazo curto; SQS gerenciado
+  reaproveita a mesma conta AWS já usada para RDS/EKS.
+- **Manter tudo síncrono (HTTP) entre os 3 serviços** — rejeitada: não
+  atende ao requisito obrigatório de mensageria assíncrona e reintroduziria
+  acoplamento temporal forte entre etapas de naturezas distintas.
 - **Remover completamente o cálculo local de orçamento do OS Service** —
   avaliada, mas descartada por ora (ver "Convivência" acima) dado o prazo.
 
 ## Consequências
 
-- Nenhum serviço acessa diretamente o banco de outro — toda troca é via
-  mensageria (este ADR) ou, pontualmente, API REST.
-- `OSStatus` ganhou o estado `CANCELADA` (migration
-  `20261118000944_add_saga_fields`) e 4 colunas novas em `ServiceOrder`
-  (`billingQuoteId`, `billingPaymentId`, `checkoutUrl`,
-  `paymentConfirmedAt`) — todas preenchidas só pelo `sagaConsumer.ts`.
+- ADR 0001 deixa de ser a decisão de comunicação *completa* do sistema:
+  continua valendo para auth (Lambda) e chamadas síncronas cliente/front →
+  OS Service; o fluxo interno da saga é assíncrono via SQS.
+- Observabilidade de correlação (`requestId`) precisaria propagar também
+  nos atributos da mensagem SQS, não só em headers HTTP, para manter o
+  rastreamento ponta a ponta entre os 3 serviços — ainda não implementado,
+  registrado como próximo passo.
+- Falha ou atraso em Billing/Execução não derruba o OS Service — a OS fica
+  visivelmente "presa" num status intermediário até a mensagem ser
+  processada ou expirar (DLQ), o que precisa de alerta dedicado.
+- Provisionamento das filas SQS fica no `mecanica-k8s-infra-SOAT`, não num
+  repositório novo só para mensageria.
+- `OSStatus` ganhou o estado `CANCELADA` e `ServiceOrder` ganhou 4 colunas
+  novas (`billingQuoteId`, `billingPaymentId`, `checkoutUrl`,
+  `paymentConfirmedAt`), preenchidas só pelo `sagaConsumer.ts`.
 - Testado em `tests/unit/infrastructure/messaging/sagaConsumer.test.ts`:
-  cobre o fluxo feliz ponta a ponta (do ponto de vista do orquestrador) e os
-  dois cenários de compensação (pagamento falho, execução falha), além de
-  idempotência (evento de falha reentregue para uma OS já cancelada).
+  cobre o fluxo feliz ponta a ponta (do ponto de vista do orquestrador) e
+  os dois cenários de compensação (pagamento falho, execução falha), além
+  de idempotência (evento de falha reentregue para uma OS já cancelada).
