@@ -30,6 +30,9 @@ export class AdvanceStatusUseCase {
       [OSStatus.FINALIZADA]: [OSStatus.ENTREGUE],
       [OSStatus.AGUARDANDO_APROVACAO]: [],
       [OSStatus.ENTREGUE]: [],
+      // Cancelada e terminal e so e atingida pelo orquestrador da saga
+      // (sagaConsumer.ts) - nunca por este endpoint manual.
+      [OSStatus.CANCELADA]: [],
     }[order.status]
 
     const toStatus = nextStatuses[0]

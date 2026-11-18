@@ -18,6 +18,17 @@ import type { IServiceRepository, ServiceRecord } from '../../../../src/domain/s
 import type { IPartRepository, PartRecord } from '../../../../src/domain/part/repositories/IPartRepository.js'
 import { OSStatus } from '../../../../src/domain/service-order/value-objects/OSStatus.js'
 import { NotFoundError, BusinessRuleError } from '../../../../src/shared/errors/AppError.js'
+import type { IMessageBus } from '../../../../src/domain/shared/messaging/IMessageBus.js'
+
+// Test double do bus usado nos testes da saga (ver ADR 0006) - grava as
+// mensagens publicadas para inspecao, sem nenhum transporte real.
+class FakeMessageBus implements IMessageBus {
+  public readonly published: Array<{ queue: string; message: unknown }> = []
+  async publish<T>(queue: string, message: T): Promise<void> {
+    this.published.push({ queue, message })
+  }
+  subscribe(): void {}
+}
 
 const mockServiceOrderRecord: ServiceOrderFullRecord = {
   id: '1',
@@ -30,6 +41,10 @@ const mockServiceOrderRecord: ServiceOrderFullRecord = {
   quoteTotalAmount: 500.0,
   quoteApprovedAt: null,
   quoteRejectedAt: null,
+  billingQuoteId: null,
+  billingPaymentId: null,
+  checkoutUrl: null,
+  paymentConfirmedAt: null,
   startedAt: null,
   completedAt: null,
   deliveredAt: null,
@@ -138,6 +153,7 @@ describe('Service Order Use Cases', () => {
       approveQuote: vi.fn(),
       rejectQuote: vi.fn(),
       getServiceStats: vi.fn(),
+      setSagaReferences: vi.fn(),
     }
 
     mockClientRepo = {
@@ -334,6 +350,44 @@ describe('Service Order Use Cases', () => {
         }),
       ).rejects.toThrow(BusinessRuleError)
     })
+
+    it('should publish GerarOrcamento to the Billing Service after creating the order (saga - ADR 0006)', async () => {
+      const bus = new FakeMessageBus()
+      const useCase = new CreateServiceOrderUseCase(
+        mockServiceOrderRepo,
+        mockClientRepo,
+        mockVehicleRepo,
+        mockServiceRepo,
+        mockPartRepo,
+        bus,
+      )
+
+      vi.mocked(mockClientRepo.findById).mockResolvedValueOnce(mockClientRecord)
+      vi.mocked(mockVehicleRepo.findById).mockResolvedValueOnce(mockVehicleRecord)
+      vi.mocked(mockServiceRepo.findById).mockResolvedValueOnce(mockServiceRecord)
+      vi.mocked(mockPartRepo.findById).mockResolvedValueOnce(mockPartRecord)
+      vi.mocked(mockServiceOrderRepo.create).mockResolvedValueOnce(mockServiceOrderRecord)
+
+      await useCase.execute({
+        clientId: '1',
+        vehicleId: '1',
+        services: [{ serviceId: '1', quantity: 1 }],
+        parts: [{ partId: '1', quantity: 1 }],
+      })
+
+      expect(bus.published).toHaveLength(1)
+      expect(bus.published[0]).toMatchObject({
+        queue: 'billing-commands',
+        message: {
+          type: 'GerarOrcamento',
+          serviceOrderId: mockServiceOrderRecord.id,
+          items: [
+            { description: 'Troca de Óleo', quantity: 1, unitPrice: 150 },
+            { description: 'Filtro de Óleo', quantity: 1, unitPrice: 50 },
+          ],
+        },
+      })
+    })
   })
 
   describe('GetServiceOrderUseCase', () => {
@@ -378,6 +432,31 @@ describe('Service Order Use Cases', () => {
 
       await expect(useCase.execute('999')).rejects.toThrow(NotFoundError)
     })
+
+    it('should publish AprovarOrcamento to the Billing Service when the OS already has a billingQuoteId (saga - ADR 0006)', async () => {
+      const bus = new FakeMessageBus()
+      const useCase = new ApproveQuoteUseCase(mockServiceOrderRepo, bus)
+      const orderWithBillingQuote = { ...mockServiceOrderRecord, billingQuoteId: 'quote-123' }
+      vi.mocked(mockServiceOrderRepo.findById).mockResolvedValueOnce(orderWithBillingQuote)
+      vi.mocked(mockServiceOrderRepo.approveQuote).mockResolvedValueOnce(orderWithBillingQuote)
+
+      await useCase.execute('1')
+
+      expect(bus.published).toEqual([
+        { queue: 'billing-commands', message: { type: 'AprovarOrcamento', quoteId: 'quote-123' } },
+      ])
+    })
+
+    it('should not publish anything when the OS has no billingQuoteId yet', async () => {
+      const bus = new FakeMessageBus()
+      const useCase = new ApproveQuoteUseCase(mockServiceOrderRepo, bus)
+      vi.mocked(mockServiceOrderRepo.findById).mockResolvedValueOnce(mockServiceOrderRecord)
+      vi.mocked(mockServiceOrderRepo.approveQuote).mockResolvedValueOnce(mockServiceOrderRecord)
+
+      await useCase.execute('1')
+
+      expect(bus.published).toHaveLength(0)
+    })
   })
 
   describe('RejectQuoteUseCase', () => {
@@ -401,6 +480,20 @@ describe('Service Order Use Cases', () => {
       vi.mocked(mockServiceOrderRepo.findById).mockResolvedValueOnce(null)
 
       await expect(useCase.execute('999')).rejects.toThrow(NotFoundError)
+    })
+
+    it('should publish RejeitarOrcamento to the Billing Service when the OS already has a billingQuoteId (saga - ADR 0006)', async () => {
+      const bus = new FakeMessageBus()
+      const useCase = new RejectQuoteUseCase(mockServiceOrderRepo, bus)
+      const orderWithBillingQuote = { ...mockServiceOrderRecord, billingQuoteId: 'quote-123' }
+      vi.mocked(mockServiceOrderRepo.findById).mockResolvedValueOnce(orderWithBillingQuote)
+      vi.mocked(mockServiceOrderRepo.rejectQuote).mockResolvedValueOnce(orderWithBillingQuote)
+
+      await useCase.execute('1')
+
+      expect(bus.published).toEqual([
+        { queue: 'billing-commands', message: { type: 'RejeitarOrcamento', quoteId: 'quote-123' } },
+      ])
     })
   })
 

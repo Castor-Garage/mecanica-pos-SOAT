@@ -1,10 +1,12 @@
 import { InMemoryMessageBus } from './InMemoryMessageBus.js'
+import { SqsMessageBus } from './SqsMessageBus.js'
 import type { IMessageBus } from '../../domain/shared/messaging/IMessageBus.js'
 
-// Instancia unica do processo. Ainda nao e usada por nenhum use case (ver
-// README/ADR 0006) - o orquestrador da saga que vai consumir/publicar nela
-// e um incremento futuro, que exige decidir como ele se encaixa no fluxo de
-// aprovacao sincrono que ja existe hoje (CreateServiceOrderUseCase,
-// ApproveQuoteUseCase). Troque por um adapter SQS real na Fase 5 mantendo
-// este ponto de composicao unico.
-export const messageBus: IMessageBus = new InMemoryMessageBus()
+// Instancia unica do processo - o orquestrador da saga (sagaConsumer.ts) e as
+// rotas/use cases que publicam comandos (CreateServiceOrderUseCase,
+// ApproveQuoteUseCase, RejectQuoteUseCase) compartilham a mesma instancia.
+// MESSAGE_BUS_DRIVER=sqs liga no Amazon SQS (ou LocalStack via SQS_ENDPOINT,
+// ver docs/demo-local-saga.md); sem a variavel, usa o adapter em memoria
+// (testes/dev sem fila nenhuma).
+export const messageBus: IMessageBus =
+  process.env.MESSAGE_BUS_DRIVER === 'sqs' ? new SqsMessageBus() : new InMemoryMessageBus()

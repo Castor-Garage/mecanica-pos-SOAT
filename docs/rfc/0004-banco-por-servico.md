@@ -1,9 +1,10 @@
 # RFC 0004 — Banco de dados por microsserviço (Fase 4)
 
-- **Status**: Aceito
+- **Status**: Aceito e implementado
 - **Autores**: Time Castor Garage
 - **Relacionado a**: ADR 0006 (arquitetura de microsserviços), RFC 0002
-  (banco de dados gerenciado — parcialmente superado neste ponto)
+  (banco de dados gerenciado — parcialmente superado neste ponto),
+  `mecanica-db-infra-SOAT`
 
 ## Contexto
 
@@ -13,15 +14,38 @@ acesso direto a banco de outro serviço) e que o conjunto dos serviços use
 (Fase 3) havia avaliado e descartado NoSQL para o domínio da aplicação,
 por ser "fortemente relacional" — essa conclusão continua válida para o
 que fica no OS Service, mas não se aplica mais ao sistema como um todo,
-porque parte do domínio (pagamentos) migra para um serviço novo.
+porque parte do domínio (pagamentos) migrou para um serviço novo.
 
 ## Decisão
 
 | Serviço | Banco | Motivo |
 |---|---|---|
 | **OS Service** | PostgreSQL (RDS existente, `mecanica-db-infra-SOAT`) | Mantém o schema Prisma atual (`Client`, `Vehicle`, `Service`, `Part`, `ServiceOrder`, `ServiceOrderItem`, `ServiceOrderPart`, `OSStatusHistory`) — domínio continua fortemente relacional, sem motivo para migrar (mesma razão do RFC 0002). |
-| **Billing Service** | PostgreSQL próprio (nova instância RDS) para `Quote`/`Payment` (dados transacionais, exigem consistência forte) **+ MongoDB/DynamoDB** para `PaymentAttempt`/payloads crus de webhook do Mercado Pago | Pagamento confirmado é um registro relacional de verdade (valor, status, vínculo com a OS); já as tentativas e payloads de webhook do Mercado Pago variam de formato por tipo de evento e não precisam de schema fixo nem de joins — cumprem aqui o banco NoSQL exigido no conjunto. |
-| **Execução/Produção Service** | PostgreSQL próprio (nova instância RDS) | Fila de execução e histórico de diagnóstico/reparo seguem o mesmo padrão relacional simples do OS Service; não há necessidade de um segundo banco NoSQL além do já coberto no Billing. |
+| **Billing Service** | PostgreSQL próprio (instância RDS própria, `services.tf`) para `Quote`/`Payment` (dados transacionais) **+ DynamoDB** para `PaymentAttempt`/payloads crus de webhook do Mercado Pago | Pagamento confirmado é um registro relacional de verdade (valor, status, vínculo com a OS); já as tentativas e payloads de webhook do Mercado Pago variam de formato por tipo de evento e não precisam de schema fixo nem de joins — cumprem aqui o banco NoSQL exigido no conjunto. |
+| **Execução/Produção Service** | PostgreSQL próprio (instância RDS própria, `services.tf`) | Fila de execução e histórico de diagnóstico/reparo seguem o mesmo padrão relacional simples do OS Service; não há necessidade de um segundo banco NoSQL além do já coberto no Billing. |
+
+Provisionamento em `mecanica-db-infra-SOAT`: `dynamodb.tf` (tabela
+`castor-garage-billing-payment-attempts`, `PAY_PER_REQUEST`, chave composta
+`paymentId` + `receivedAt`) e `services.tf` (`local.service_databases`,
+`aws_db_instance.service` para cada serviço, credenciais publicadas via SSM
+— `/castor-garage/{service}/database-url[-staging]`, mesmo padrão do
+RFC 0002/ADR 0003).
+
+### Por que DynamoDB em vez de MongoDB Atlas
+
+Avaliado entre os dois gerenciados possíveis; decisão final por DynamoDB:
+
+| Critério | DynamoDB (escolhido) | MongoDB Atlas |
+|---|---|---|
+| Conta | Nativo da conta AWS Academy já usada para EKS/RDS/SQS | Exigiria conta externa separada, fora do escopo de custo/gestão do projeto |
+| Credenciais | Acesso via `LabRole`/IMDS do próprio node EKS — mesmo mecanismo já usado para SQS, sem senha/connection string para gerenciar | Precisaria de usuário/senha ou connection string gerenciados à parte |
+| Custo | `PAY_PER_REQUEST` — próximo de zero na escala de demonstração do projeto | Tier gratuito tem limites próprios, fora do controle do time |
+| Encaixe com o dado | Payload de webhook é semi-estruturado e muda de formato entre eventos do provedor — não precisa de schema fixo nem de joins com o resto do domínio de pagamento | Atenderia igualmente bem, mas sem vantagem sobre o DynamoDB aqui |
+
+Implementado em `mecanica-billing-SOAT/src/infrastructure/database/dynamodb/DynamoPaymentAttemptRepository.ts`,
+acionado pelo webhook do Mercado Pago antes de decidir confirmar/falhar o
+pagamento — ver `IPaymentAttemptRepository` (porta) e
+`PAYMENT_ATTEMPTS_TABLE_NAME`/`DYNAMODB_ENDPOINT` (variáveis de ambiente).
 
 ### O que acontece com `OSStatusHistory` e os dashboards
 
@@ -30,13 +54,13 @@ transições do agregado `ServiceOrder`, que continua sendo dono do OS
 Service. Os dashboards que hoje fazem join direto entre `ServiceOrder` e
 `OSStatusHistory` continuam funcionando sem mudança.
 
-O que muda: métricas que hoje dependeriam de dados de pagamento ou
-execução (se viessem a existir) **não podem mais ser join SQL direto**,
-porque esses dados passam a viver em bancos de outros serviços. Essas
-métricas passam a ser alimentadas pelos eventos que já trafegam em
-`os-events` (ADR 0006) — por exemplo, tempo entre `OrcamentoGerado` e
-`PagamentoConfirmado` é calculado a partir do timestamp dos eventos
-recebidos, não de uma consulta cruzando bancos.
+O que muda: métricas que dependeriam de dados de pagamento ou execução
+**não podem mais ser join SQL direto**, porque esses dados passam a viver
+em bancos de outros serviços. Essas métricas passariam a ser alimentadas
+pelos eventos que já trafegam em `os-events` (ADR 0006) — por exemplo,
+tempo entre `OrcamentoGerado` e `PagamentoConfirmado` calculado a partir do
+timestamp dos eventos recebidos, não de uma consulta cruzando bancos
+(ainda não implementado nenhum dashboard desse tipo).
 
 ## Alternativas consideradas
 
@@ -47,26 +71,23 @@ recebidos, não de uma consulta cruzando bancos.
   queries cruzadas assim que alguém "só precisar de um join rápido".
 - **NoSQL no OS Service** (ex.: mover `OSStatusHistory` para DynamoDB) —
   rejeitada pelo mesmo motivo do RFC 0002: os dashboards de observabilidade
-  da Fase 3 já dependem de índices e joins relacionais ali; mexer nisso
-  não traria benefício e arriscaria quebrar as queries de métricas
-  existentes.
+  da Fase 3 já dependem de índices e joins relacionais ali.
 - **NoSQL no Execução/Produção Service** (fila como documento) —
   considerada, mas descartada por simplicidade: o conjunto já atende ao
-  requisito de 1 NoSQL via o Billing Service, e o domínio de execução é
-  simples o bastante para não precisar de schema flexível.
+  requisito de 1 NoSQL via o Billing Service.
+- **Guardar o payload de webhook também no Postgres (coluna JSON)** —
+  rejeitada: não atenderia ao requisito explícito de usar pelo menos um
+  banco não relacional no projeto.
 
 ## Consequências
 
-- 2 instâncias RDS novas (Billing e Execução) além da existente do OS
-  Service — provisionamento Terraform a ser adicionado em
-  `mecanica-db-infra-SOAT` (ou repositório equivalente), seguindo o
-  mesmo padrão do RFC 0002 (`db.t3.micro`, `DATABASE_URL` publicada via
-  SSM Parameter Store).
-- 1 instância MongoDB (ou tabela DynamoDB) nova para o Billing Service —
-  a decidir entre MongoDB Atlas free tier (menos integrado à conta AWS
-  Academy, mas setup mais rápido) ou DynamoDB (gerenciado nativo na AWS,
-  já usada no resto do projeto) na implementação da Fase 2 do backlog
-  (ver plano de migração).
+- 3 bancos PostgreSQL (OS Service, Billing, Execução) + 1 tabela DynamoDB
+  a manter.
+- Nenhuma visão agregada automática entre os 3 bancos — um dashboard
+  cross-serviço futuro precisaria agregar via eventos (`os-events`) ou API,
+  nunca via `JOIN` direto entre bancos (reforça o orquestrador do ADR 0006).
+- `PrismaServiceOrderRepository`/`PrismaQuoteRepository`/
+  `PrismaExecutionRepository` continuam isolados por serviço — nenhum deles
+  referencia tabelas de outro banco por chave estrangeira.
 - Migrations/seed de cada novo banco seguem o mesmo fluxo Prisma já usado
-  hoje (`prisma migrate deploy` + `npm run db:seed`), replicado por
-  serviço.
+  hoje (`prisma migrate deploy` + `npm run db:seed`), replicado por serviço.

@@ -32,6 +32,13 @@ export interface ServiceOrderRecord {
   completedAt: Date | null
   deliveredAt: Date | null
   technicianNotes: string | null
+  // Referencias da saga assincrona com Billing/Execução (ver ADR 0006) -
+  // preenchidas pelo orquestrador (sagaConsumer.ts) conforme os eventos
+  // chegam em os-events. Nunca escritas pelos use cases do fluxo local.
+  billingQuoteId: string | null
+  billingPaymentId: string | null
+  checkoutUrl: string | null
+  paymentConfirmedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
@@ -82,4 +89,15 @@ export interface IServiceOrderRepository {
   approveQuote(id: string, approvedBy?: string): Promise<ServiceOrderFullRecord>
   rejectQuote(id: string, rejectedBy?: string): Promise<ServiceOrderFullRecord>
   getServiceStats(): Promise<ServiceStatRecord[]>
+  // Usado só pelo orquestrador da saga (sagaConsumer.ts) para gravar as
+  // referências recebidas via os-events - nunca pelo fluxo local manual.
+  setSagaReferences(
+    id: string,
+    data: Partial<{
+      billingQuoteId: string
+      billingPaymentId: string
+      checkoutUrl: string
+      paymentConfirmedAt: Date
+    }>,
+  ): Promise<void>
 }

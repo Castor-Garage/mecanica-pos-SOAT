@@ -37,6 +37,10 @@ function toRecord(row: ServiceOrderWithRelations): ServiceOrderFullRecord {
     quoteTotalAmount: row.quoteTotalAmount ? Number(row.quoteTotalAmount) : null,
     quoteApprovedAt: row.quoteApprovedAt,
     quoteRejectedAt: row.quoteRejectedAt,
+    billingQuoteId: row.billingQuoteId,
+    billingPaymentId: row.billingPaymentId,
+    checkoutUrl: row.checkoutUrl,
+    paymentConfirmedAt: row.paymentConfirmedAt,
     startedAt: row.startedAt,
     completedAt: row.completedAt,
     deliveredAt: row.deliveredAt,
@@ -77,6 +81,10 @@ function toListRecord(row: {
   quoteTotalAmount: { toNumber(): number } | number | null
   quoteApprovedAt: Date | null
   quoteRejectedAt: Date | null
+  billingQuoteId: string | null
+  billingPaymentId: string | null
+  checkoutUrl: string | null
+  paymentConfirmedAt: Date | null
   startedAt: Date | null
   completedAt: Date | null
   deliveredAt: Date | null
@@ -95,6 +103,10 @@ function toListRecord(row: {
     quoteTotalAmount: row.quoteTotalAmount ? Number(row.quoteTotalAmount) : null,
     quoteApprovedAt: row.quoteApprovedAt,
     quoteRejectedAt: row.quoteRejectedAt,
+    billingQuoteId: row.billingQuoteId,
+    billingPaymentId: row.billingPaymentId,
+    checkoutUrl: row.checkoutUrl,
+    paymentConfirmedAt: row.paymentConfirmedAt,
     startedAt: row.startedAt,
     completedAt: row.completedAt,
     deliveredAt: row.deliveredAt,
@@ -115,6 +127,10 @@ type RawServiceOrderRow = {
   quoteTotalAmount: string | null
   quoteApprovedAt: Date | null
   quoteRejectedAt: Date | null
+  billingQuoteId: string | null
+  billingPaymentId: string | null
+  checkoutUrl: string | null
+  paymentConfirmedAt: Date | null
   startedAt: Date | null
   completedAt: Date | null
   deliveredAt: Date | null
@@ -135,6 +151,10 @@ function fromRawRow(row: RawServiceOrderRow): ServiceOrderRecord {
     quoteTotalAmount: row.quoteTotalAmount != null ? Number(row.quoteTotalAmount) : null,
     quoteApprovedAt: row.quoteApprovedAt,
     quoteRejectedAt: row.quoteRejectedAt,
+    billingQuoteId: row.billingQuoteId,
+    billingPaymentId: row.billingPaymentId,
+    checkoutUrl: row.checkoutUrl,
+    paymentConfirmedAt: row.paymentConfirmedAt,
     startedAt: row.startedAt,
     completedAt: row.completedAt,
     deliveredAt: row.deliveredAt,
@@ -197,6 +217,10 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
         quote_total_amount  AS "quoteTotalAmount",
         quote_approved_at   AS "quoteApprovedAt",
         quote_rejected_at   AS "quoteRejectedAt",
+        billing_quote_id    AS "billingQuoteId",
+        billing_payment_id  AS "billingPaymentId",
+        checkout_url        AS "checkoutUrl",
+        payment_confirmed_at AS "paymentConfirmedAt",
         started_at          AS "startedAt",
         completed_at        AS "completedAt",
         delivered_at        AS "deliveredAt",
@@ -306,6 +330,18 @@ export class PrismaServiceOrderRepository implements IServiceOrderRepository {
     value: Date,
   ): Promise<void> {
     await prisma.serviceOrder.update({ where: { id }, data: { [field]: value } })
+  }
+
+  async setSagaReferences(
+    id: string,
+    data: Partial<{
+      billingQuoteId: string
+      billingPaymentId: string
+      checkoutUrl: string
+      paymentConfirmedAt: Date
+    }>,
+  ): Promise<void> {
+    await prisma.serviceOrder.update({ where: { id }, data })
   }
 
   async approveQuote(id: string, approvedBy?: string): Promise<ServiceOrderFullRecord> {

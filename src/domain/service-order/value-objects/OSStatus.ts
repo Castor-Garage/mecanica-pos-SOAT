@@ -7,15 +7,21 @@ export enum OSStatus {
   EM_EXECUCAO = 'EM_EXECUCAO',
   FINALIZADA = 'FINALIZADA',
   ENTREGUE = 'ENTREGUE',
+  // Compensação da saga (ver ADR 0006): pagamento recusado pelo Mercado Pago
+  // (via Billing Service) ou execução reportada como não concluída (via
+  // Execução Service) - acionado pelo orquestrador (sagaConsumer.ts), nunca
+  // pelos endpoints manuais de aprovação/avanço.
+  CANCELADA = 'CANCELADA',
 }
 
 const VALID_TRANSITIONS: Record<OSStatus, OSStatus[]> = {
   [OSStatus.RECEBIDA]: [OSStatus.EM_DIAGNOSTICO],
   [OSStatus.EM_DIAGNOSTICO]: [OSStatus.AGUARDANDO_APROVACAO],
-  [OSStatus.AGUARDANDO_APROVACAO]: [OSStatus.EM_EXECUCAO],
-  [OSStatus.EM_EXECUCAO]: [OSStatus.FINALIZADA],
+  [OSStatus.AGUARDANDO_APROVACAO]: [OSStatus.EM_EXECUCAO, OSStatus.CANCELADA],
+  [OSStatus.EM_EXECUCAO]: [OSStatus.FINALIZADA, OSStatus.CANCELADA],
   [OSStatus.FINALIZADA]: [OSStatus.ENTREGUE],
   [OSStatus.ENTREGUE]: [],
+  [OSStatus.CANCELADA]: [],
 }
 
 const STATUS_LABELS: Record<OSStatus, string> = {
@@ -25,6 +31,7 @@ const STATUS_LABELS: Record<OSStatus, string> = {
   [OSStatus.EM_EXECUCAO]: 'Em execução',
   [OSStatus.FINALIZADA]: 'Finalizada',
   [OSStatus.ENTREGUE]: 'Entregue',
+  [OSStatus.CANCELADA]: 'Cancelada',
 }
 
 export function canTransition(from: OSStatus, to: OSStatus): boolean {
