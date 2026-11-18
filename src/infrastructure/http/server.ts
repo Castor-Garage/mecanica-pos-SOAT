@@ -20,6 +20,7 @@ import { serviceRoutes } from './routes/service.routes.js'
 import { partRoutes } from './routes/part.routes.js'
 import { serviceOrderRoutes } from './routes/service-order.routes.js'
 import { webhookRoutes } from './routes/webhook.routes.js'
+import { internalRoutes } from './routes/internal.routes.js'
 
 const REQUEST_ID_HEADER = 'x-request-id'
 
@@ -96,6 +97,7 @@ export function buildServer() {
   app.register(partRoutes)
   app.register(serviceOrderRoutes)
   app.register(webhookRoutes)
+  app.register(internalRoutes)
 
   // Health check
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))

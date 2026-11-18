@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { type ZodTypeProvider } from 'fastify-type-provider-zod'
 import { requireAdmin, requireRole, assertOrderAccess } from '../middlewares/auth.middleware.js'
+import { NotFoundError } from '../../../shared/errors/AppError.js'
 import { PrismaServiceOrderRepository } from '../../database/repositories/PrismaServiceOrderRepository.js'
 import { PrismaClientRepository } from '../../database/repositories/PrismaClientRepository.js'
 import { PrismaVehicleRepository } from '../../database/repositories/PrismaVehicleRepository.js'
@@ -85,22 +86,22 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   const statsUC = new GetServiceStatsUseCase(soRepo)
   const sendEmailUC = new SendOrderByEmailUseCase(soRepo, new NodemailerEmailProvider())
 
-  // tracking by order number — CPF-authenticated client (own orders only) or admin
+  // tracking by order number — public, no auth required
   typed.get(
     '/service-orders/track/:orderNumber',
     {
-      onRequest: [requireRole('admin', 'client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Acompanhar OS pelo número (cliente dono da OS ou admin)',
-        security: [{ bearerAuth: [] }],
+        summary: 'Acompanhar OS pelo número (público)',
         params: z.object({ orderNumber: z.string().min(1) }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
       const { orderNumber } = request.params
-      return assertOrderAccess(await soRepo.findByOrderNumber(orderNumber), request.user, orderNumber)
+      const order = await soRepo.findByOrderNumber(orderNumber)
+      if (!order) throw new NotFoundError('Ordem de Serviço', orderNumber)
+      return order
     },
   )
 
@@ -143,15 +144,13 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
     },
   )
 
-  // send OS data by e-mail from the tracking page (address is not persisted)
+  // send OS data by e-mail from the tracking page (address is not persisted) — public
   typed.post(
     '/service-orders/:id/send-email',
     {
-      onRequest: [requireRole('admin', 'client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Enviar dados da OS por e-mail (cliente dono da OS ou admin)',
-        security: [{ bearerAuth: [] }],
+        summary: 'Enviar dados da OS por e-mail (público)',
         params: z.object({ id: z.string().uuid() }),
         body: z.object({ email: z.string().email() }),
         response: { 200: z.object({ message: z.string() }) },
@@ -159,7 +158,8 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const { id } = request.params
-      assertOrderAccess(await getUC.execute(id), request.user, id)
+      const order = await getUC.execute(id)
+      if (!order) throw new NotFoundError('Ordem de Serviço', id)
       await sendEmailUC.execute(id, request.body.email)
       return { message: 'E-mail enviado com sucesso' }
     },
