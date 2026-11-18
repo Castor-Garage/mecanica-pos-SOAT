@@ -11,8 +11,9 @@ import type { IMessageBus } from '../../domain/shared/messaging/IMessageBus.js'
 // endpoint compativel (ex. LocalStack via SQS_ENDPOINT, usado para rodar a
 // saga localmente sem depender da conta AWS Academy). Resolve a URL de cada
 // fila por nome logico (ex. "billing-commands"):
-//   1. variavel SQS_QUEUE_URL_<NOME_EM_MAIUSCULO_COM_UNDERSCORE>, publicada
-//      via SSM/Terraform em producao;
+//   1. variavel SQS_<NOME_DA_FILA>_QUEUE_URL (ex. SQS_BILLING_COMMANDS_QUEUE_URL),
+//      publicada via SSM/Terraform em producao - mesma convencao ja usada
+//      nos .env.example antes deste adapter existir;
 //   2. GetQueueUrl pelo proprio nome, como fallback (ambiente local).
 export class SqsMessageBus implements IMessageBus {
   private readonly client: SQSClient
@@ -74,7 +75,7 @@ export class SqsMessageBus implements IMessageBus {
     const cached = this.queueUrlCache.get(queue)
     if (cached) return cached
 
-    const envKey = `SQS_QUEUE_URL_${queue.toUpperCase().replace(/-/g, '_')}`
+    const envKey = `SQS_${queue.toUpperCase().replace(/-/g, '_')}_QUEUE_URL`
     const fromEnv = process.env[envKey]
     if (fromEnv) {
       this.queueUrlCache.set(queue, fromEnv)
