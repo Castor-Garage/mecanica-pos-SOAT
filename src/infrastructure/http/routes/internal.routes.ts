@@ -5,7 +5,7 @@ import { PrismaServiceOrderRepository } from '../../database/repositories/Prisma
 import { ApproveQuoteUseCase } from '../../../application/use-cases/service-order/ApproveQuoteUseCase.js'
 import { BusinessRuleError } from '../../../shared/errors/AppError.js'
 import { messageBus } from '../../messaging/bus.js'
-import { triggerExecucaoAfterPayment } from '../../messaging/sagaConsumer.js'
+import { triggerExecucaoAfterPayment, compensate } from '../../messaging/sagaConsumer.js'
 
 // Endpoints internos chamados pelo billing service após eventos de pagamento.
 // Sem autenticação — acessíveis apenas internamente (mesma VPC/cluster).
@@ -44,6 +44,26 @@ export async function internalRoutes(app: FastifyInstance) {
       // Mesmo proximo passo da saga que o evento PagamentoConfirmado
       // (os-events) dispara - idempotente, ver triggerExecucaoAfterPayment.
       await triggerExecucaoAfterPayment(soRepo, messageBus, serviceOrderId)
+      return { ok: true }
+    },
+  )
+
+  // Fallback sincrono do evento PagamentoFalhou (os-events) - mesma
+  // compensacao da saga (ver ADR 0006), chamada direto pelo Billing quando
+  // o SQS nao esta disponivel (ex. ambiente local sem LocalStack).
+  typed.post(
+    '/internal/payment-failed',
+    {
+      schema: {
+        tags: ['Internal'],
+        summary: 'Callback do billing após pagamento falhar — cancela a OS (compensação)',
+        body: z.object({ serviceOrderId: z.string().uuid(), reason: z.string() }),
+        response: { 200: z.object({ ok: z.boolean() }) },
+      },
+    },
+    async (request) => {
+      const { serviceOrderId, reason } = request.body
+      await compensate(soRepo, serviceOrderId, `Pagamento recusado: ${reason}`, request.log)
       return { ok: true }
     },
   )

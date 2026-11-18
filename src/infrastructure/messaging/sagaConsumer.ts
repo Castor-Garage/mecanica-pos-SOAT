@@ -145,7 +145,13 @@ async function advanceToFinalizada(
   await serviceOrderRepo.setTimestamp(serviceOrderId, 'completedAt', new Date())
 }
 
-async function compensate(
+// Acionado tanto pelo evento PagamentoFalhou/ExecucaoFalhou (os-events)
+// quanto pelo callback sincrono POST /internal/payment-failed que o Billing
+// chama como fallback quando o SQS nao esta disponivel (ver
+// internal.routes.ts) - mesma idempotencia dos outros pontos de entrada:
+// se a OS ja nao estiver mais num estado que aceite cancelamento (ex. ja
+// cancelada por este mesmo motivo), a chamada e ignorada.
+export async function compensate(
   serviceOrderRepo: IServiceOrderRepository,
   serviceOrderId: string,
   reason: string,
