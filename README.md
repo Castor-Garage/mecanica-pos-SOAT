@@ -118,7 +118,7 @@ flowchart TB
   subgraph EKS["Cluster EKS (provisionado por mecanica-k8s-infra-SOAT)"]
     direction TB
     CM["ConfigMap"] --> Deploy
-    Secret["Secret (aplicado manualmente)"] --> Deploy
+    Secret["Secret (montado pelo pipeline a partir do SSM)"] --> Deploy
     HPA["HorizontalPodAutoscaler"] -. escala .-> Deploy["Deployment castor-garage-api (kustomize: production/staging)"]
     Svc["Service LoadBalancer"] --> Deploy
   end
@@ -192,7 +192,7 @@ manifestos da própria API, aplicados contra recursos já existentes:
 
 - Cluster EKS, node group, `metrics-server`, StorageClass: [`mecanica-k8s-infra-SOAT`](https://github.com/Castor-Garage/mecanica-k8s-infra-SOAT).
 - RDS PostgreSQL: [`mecanica-db-infra-SOAT`](https://github.com/Castor-Garage/mecanica-db-infra-SOAT).
-- Namespace, ConfigMap e Secret de cada ambiente (`castor-garage-production`/`castor-garage-staging`) são aplicados manualmente uma vez (não fazem parte do deploy automático — ver comentários em `pipeline.yml`).
+- Namespace e ConfigMap de cada ambiente (`castor-garage-production`/`castor-garage-staging`) vêm dos manifestos; o Secret `castor-garage-secret` é montado pelo pipeline a cada deploy (ver [CI/CD](#cicd-githubworkflowspipelineyml)).
 
 O deploy em si (`kubectl apply -k`) roda pelo CI/CD a cada push, mas pode ser feito manualmente:
 
@@ -231,6 +231,25 @@ Pipeline no GitHub Actions disparada em push/PR para `main`/`develop`:
    via Kustomize com a tag da imagem do commit, aguarda o rollout, descobre
    o hostname do Load Balancer, faz um smoke test em `/health`, verifica o
    `HorizontalPodAutoscaler` e publica a URL no SSM Parameter Store.
+
+### Secret do Kubernetes (`castor-garage-secret`)
+
+Nada é criado à mão no cluster: a cada deploy o pipeline monta o
+`castor-garage-secret` com o banco lido do SSM Parameter Store e o resto
+dos secrets do GitHub. O step falha se algum parâmetro ou secret
+obrigatório não existir.
+
+| Chave | Origem |
+|---|---|
+| `DATABASE_URL` | SSM `/castor-garage/database-url` (`-staging` em staging) — `mecanica-db-infra-SOAT` |
+| `ADMIN_DATABASE_URL` (só staging, Job `create-staging-db`) | SSM `/castor-garage/database-url`, sem os parâmetros de query do Node |
+| `JWT_SECRET` | secret do GitHub (obrigatório) — o mesmo valor do `mecanica-auth-lambda-SOAT` |
+| `ADMIN_PASSWORD` | secret do GitHub (obrigatório) |
+| `WEBHOOK_SECRET` | secret do GitHub (opcional) |
+| `NEW_RELIC_LICENSE_KEY` | secret do GitHub |
+
+Como o `JWT_SECRET` é compartilhado com o `mecanica-auth-lambda-SOAT`, o
+mais simples é cadastrá-lo como secret da organização.
 
 Esse job publica a nova versao a cada push num ambiente **persistente** na
 AWS — o cluster fica no ar entre execucoes, pronto pra usar no video
