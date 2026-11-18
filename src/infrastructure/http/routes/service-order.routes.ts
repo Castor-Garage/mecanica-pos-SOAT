@@ -131,21 +131,33 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   )
 
   // client approves/rejects the quote of its own order from the tracking page
+  // (público ou autenticado - mesmo padrão do GET /track acima: sem token,
+  // basta conhecer o numero da OS; com token de cliente, so o dono acessa)
   typed.post(
     '/service-orders/track/:orderNumber/approve',
     {
-      onRequest: [requireRole('client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Aprovar orçamento (cliente dono da OS)',
-        security: [{ bearerAuth: [] }],
+        summary: 'Aprovar orçamento (público ou cliente dono da OS)',
         params: z.object({ orderNumber: z.string().min(1) }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
       const { orderNumber } = request.params
-      const order = assertOrderAccess(await soRepo.findByOrderNumber(orderNumber), request.user, orderNumber)
+      let authenticatedUser: typeof request.user | null = null
+      try {
+        await request.jwtVerify()
+        authenticatedUser = request.user
+      } catch {
+        // no token — public access
+      }
+      const found = await soRepo.findByOrderNumber(orderNumber)
+      const order =
+        authenticatedUser?.role === 'client'
+          ? assertOrderAccess(found, authenticatedUser, orderNumber)
+          : found
+      if (!order) throw new NotFoundError('Ordem de Serviço', orderNumber)
       return approveUC.execute(order.id, 'cliente')
     },
   )
@@ -153,18 +165,28 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   typed.post(
     '/service-orders/track/:orderNumber/reject',
     {
-      onRequest: [requireRole('client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Rejeitar orçamento (cliente dono da OS)',
-        security: [{ bearerAuth: [] }],
+        summary: 'Rejeitar orçamento (público ou cliente dono da OS)',
         params: z.object({ orderNumber: z.string().min(1) }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
       const { orderNumber } = request.params
-      const order = assertOrderAccess(await soRepo.findByOrderNumber(orderNumber), request.user, orderNumber)
+      let authenticatedUser: typeof request.user | null = null
+      try {
+        await request.jwtVerify()
+        authenticatedUser = request.user
+      } catch {
+        // no token — public access
+      }
+      const found = await soRepo.findByOrderNumber(orderNumber)
+      const order =
+        authenticatedUser?.role === 'client'
+          ? assertOrderAccess(found, authenticatedUser, orderNumber)
+          : found
+      if (!order) throw new NotFoundError('Ordem de Serviço', orderNumber)
       return rejectUC.execute(order.id, 'cliente')
     },
   )
