@@ -1,3 +1,4 @@
+import newrelic from 'newrelic'
 import type {
   IServiceOrderRepository,
   ServiceOrderFullRecord,
@@ -38,7 +39,10 @@ export class ApproveQuoteUseCase {
 
     const approved = await this.serviceOrderRepo.approveQuote(id, approvedBy)
 
+    newrelic.addCustomAttribute('saga.serviceOrderId', id)
+
     if (order.billingQuoteId) {
+      newrelic.addCustomAttribute('saga.commandPublished', 'AprovarOrcamento')
       await this.bus.publish<AprovarOrcamentoCommand>(BILLING_COMMANDS_QUEUE, {
         type: 'AprovarOrcamento',
         quoteId: order.billingQuoteId,

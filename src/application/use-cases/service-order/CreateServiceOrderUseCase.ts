@@ -1,3 +1,4 @@
+import newrelic from 'newrelic'
 import type {
   IServiceOrderRepository,
   ServiceOrderFullRecord,
@@ -99,6 +100,11 @@ export class CreateServiceOrderUseCase {
       parts: resolvedParts,
       quoteTotalAmount,
     })
+
+    // Atributos pesquisaveis no APM - correlaciona esta requisicao HTTP com o
+    // restante da saga (ver sagaConsumer.ts, que tambem marca serviceOrderId).
+    newrelic.addCustomAttribute('saga.serviceOrderId', order.id)
+    newrelic.addCustomAttribute('saga.commandPublished', 'GerarOrcamento')
 
     await this.bus.publish<GerarOrcamentoCommand>(BILLING_COMMANDS_QUEUE, {
       type: 'GerarOrcamento',
