@@ -1,4 +1,5 @@
 import type { FastifyBaseLogger } from 'fastify'
+import newrelic from 'newrelic'
 import { messageBus } from './bus.js'
 import { PrismaServiceOrderRepository } from '../database/repositories/PrismaServiceOrderRepository.js'
 import { OSStatus, canTransition } from '../../domain/service-order/value-objects/OSStatus.js'
@@ -20,11 +21,23 @@ export function bootstrapSagaConsumer(log: FastifyBaseLogger): void {
   const serviceOrderRepo = new PrismaServiceOrderRepository()
 
   messageBus.subscribe<OsEvent>(OS_EVENTS_QUEUE, async (event) => {
-    try {
-      await handleOsEvent(event, serviceOrderRepo, messageBus, log)
-    } catch (error) {
-      log.error({ err: error, event }, 'Falha ao processar evento da saga (os-events)')
-    }
+    // Consumo de fila nao passa por uma transacao HTTP, entao o agente do New
+    // Relic nao traca nada aqui por padrao - sem isso, cada passo da saga e
+    // invisivel no APM. startBackgroundTransaction cria uma transacao propria
+    // por evento, com o tipo e a OS como atributos pesquisaveis.
+    await newrelic.startBackgroundTransaction(`saga/os-events/${event.type}`, async () => {
+      const transaction = newrelic.getTransaction()
+      newrelic.addCustomAttribute('eventType', event.type)
+      newrelic.addCustomAttribute('serviceOrderId', event.serviceOrderId)
+      try {
+        await handleOsEvent(event, serviceOrderRepo, messageBus, log)
+      } catch (error) {
+        newrelic.noticeError(error as Error)
+        log.error({ err: error, event }, 'Falha ao processar evento da saga (os-events)')
+      } finally {
+        transaction.end()
+      }
+    })
   })
 }
 
