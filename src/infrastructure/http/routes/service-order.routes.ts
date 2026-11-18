@@ -86,20 +86,30 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   const statsUC = new GetServiceStatsUseCase(soRepo)
   const sendEmailUC = new SendOrderByEmailUseCase(soRepo, new NodemailerEmailProvider())
 
-  // tracking by order number — public, no auth required
+  // tracking by order number — public when no token; when a client token is present, ownership is enforced
   typed.get(
     '/service-orders/track/:orderNumber',
     {
       schema: {
         tags: ['Service Orders'],
-        summary: 'Acompanhar OS pelo número (público)',
+        summary: 'Acompanhar OS pelo número (público ou autenticado)',
         params: z.object({ orderNumber: z.string().min(1) }),
         response: { 200: orderFullSchema },
       },
     },
     async (request) => {
       const { orderNumber } = request.params
+      let authenticatedUser: typeof request.user | null = null
+      try {
+        await request.jwtVerify()
+        authenticatedUser = request.user
+      } catch {
+        // no token — public access
+      }
       const order = await soRepo.findByOrderNumber(orderNumber)
+      if (authenticatedUser?.role === 'client') {
+        return assertOrderAccess(order, authenticatedUser, orderNumber)
+      }
       if (!order) throw new NotFoundError('Ordem de Serviço', orderNumber)
       return order
     },
@@ -144,13 +154,15 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
     },
   )
 
-  // send OS data by e-mail from the tracking page (address is not persisted) — public
+  // send OS data by e-mail — requires client token; only the order owner may request it
   typed.post(
     '/service-orders/:id/send-email',
     {
+      onRequest: [requireRole('client')],
       schema: {
         tags: ['Service Orders'],
-        summary: 'Enviar dados da OS por e-mail (público)',
+        summary: 'Enviar dados da OS por e-mail (cliente dono)',
+        security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
         body: z.object({ email: z.string().email() }),
         response: { 200: z.object({ message: z.string() }) },
@@ -159,7 +171,7 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
     async (request) => {
       const { id } = request.params
       const order = await getUC.execute(id)
-      if (!order) throw new NotFoundError('Ordem de Serviço', id)
+      assertOrderAccess(order, request.user, id)
       await sendEmailUC.execute(id, request.body.email)
       return { message: 'E-mail enviado com sucesso' }
     },
