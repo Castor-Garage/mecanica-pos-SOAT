@@ -18,6 +18,7 @@ import { SendOrderByEmailUseCase } from '../../../application/use-cases/service-
 import { NodemailerEmailProvider } from '../../providers/email/NodemailerEmailProvider.js'
 import { BusinessEventLogger } from '../../observability/events.js'
 import { OSStatus } from '../../../domain/service-order/value-objects/OSStatus.js'
+import { messageBus } from '../../messaging/bus.js'
 
 const orderItemSchema = z.object({
   id: z.string().uuid(),
@@ -76,10 +77,17 @@ export async function serviceOrderRoutes(app: FastifyInstance) {
   const serviceRepo = new PrismaServiceRepository()
   const partRepo = new PrismaPartRepository()
 
-  const createUC = new CreateServiceOrderUseCase(soRepo, clientRepo, vehicleRepo, serviceRepo, partRepo)
+  const createUC = new CreateServiceOrderUseCase(
+    soRepo,
+    clientRepo,
+    vehicleRepo,
+    serviceRepo,
+    partRepo,
+    messageBus,
+  )
   const advanceUC = new AdvanceStatusUseCase(soRepo)
-  const approveUC = new ApproveQuoteUseCase(soRepo)
-  const rejectUC = new RejectQuoteUseCase(soRepo)
+  const approveUC = new ApproveQuoteUseCase(soRepo, messageBus)
+  const rejectUC = new RejectQuoteUseCase(soRepo, messageBus)
   const getUC = new GetServiceOrderUseCase(soRepo)
   const listUC = new ListServiceOrdersUseCase(soRepo)
   const statsUC = new GetServiceStatsUseCase(soRepo)

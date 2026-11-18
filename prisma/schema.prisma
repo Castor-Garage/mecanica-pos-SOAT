@@ -24,6 +24,7 @@ enum OSStatus {
   EM_EXECUCAO
   FINALIZADA
   ENTREGUE
+  CANCELADA
 }
 
 model Admin {
@@ -116,6 +117,12 @@ model ServiceOrder {
   quoteTotalAmount   Decimal?           @map("quote_total_amount") @db.Decimal(10, 2)
   quoteApprovedAt    DateTime?          @map("quote_approved_at")
   quoteRejectedAt    DateTime?          @map("quote_rejected_at")
+  // Referencias da saga assincrona com Billing/Execução (ver ADR 0006) -
+  // preenchidas pelo orquestrador conforme os eventos chegam em os-events.
+  billingQuoteId     String?            @map("billing_quote_id")
+  billingPaymentId   String?            @map("billing_payment_id")
+  checkoutUrl        String?            @map("checkout_url")
+  paymentConfirmedAt DateTime?          @map("payment_confirmed_at")
   startedAt          DateTime?          @map("started_at")
   completedAt        DateTime?          @map("completed_at")
   deliveredAt        DateTime?          @map("delivered_at")

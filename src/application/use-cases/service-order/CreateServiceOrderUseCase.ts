@@ -7,6 +7,18 @@ import type { IVehicleRepository } from '../../../domain/vehicle/repositories/IV
 import type { IServiceRepository } from '../../../domain/service/repositories/IServiceRepository.js'
 import type { IPartRepository } from '../../../domain/part/repositories/IPartRepository.js'
 import { NotFoundError, BusinessRuleError } from '../../../shared/errors/AppError.js'
+import type { IMessageBus } from '../../../domain/shared/messaging/IMessageBus.js'
+import {
+  BILLING_COMMANDS_QUEUE,
+  type GerarOrcamentoCommand,
+} from '../../../domain/shared/messaging/topics.js'
+
+// No-op usado quando nenhum bus e injetado (ex.: testes existentes que
+// instanciam o use case sem o 6o parametro) - ver ADR 0006.
+class NullMessageBus implements IMessageBus {
+  async publish(): Promise<void> {}
+  subscribe(): void {}
+}
 
 export interface CreateServiceOrderInput {
   clientId: string
@@ -23,6 +35,11 @@ export class CreateServiceOrderUseCase {
     private readonly vehicleRepo: IVehicleRepository,
     private readonly serviceRepo: IServiceRepository,
     private readonly partRepo: IPartRepository,
+    // Orquestrador da saga (ver ADR 0006): publica GerarOrcamento para o
+    // Billing Service gerar seu proprio orcamento (assincrono, em paralelo
+    // ao quoteTotalAmount local calculado abaixo). Opcional para nao quebrar
+    // instanciacoes existentes que nao se importam com a saga.
+    private readonly bus: IMessageBus = new NullMessageBus(),
   ) {}
 
   async execute(input: CreateServiceOrderInput): Promise<ServiceOrderFullRecord> {
@@ -43,7 +60,8 @@ export class CreateServiceOrderUseCase {
       throw new BusinessRuleError('A ordem de serviço deve ter ao menos um serviço')
     }
 
-    const resolvedServices: Array<{ serviceId: string; quantity: number; unitPrice: number }> = []
+    const resolvedServices: Array<{ serviceId: string; quantity: number; unitPrice: number; description: string }> =
+      []
     for (const s of input.services) {
       const service = await this.serviceRepo.findById(s.serviceId)
       if (!service) throw new NotFoundError('Serviço', s.serviceId)
@@ -52,10 +70,11 @@ export class CreateServiceOrderUseCase {
         serviceId: s.serviceId,
         quantity: s.quantity ?? 1,
         unitPrice: service.basePrice,
+        description: service.name,
       })
     }
 
-    const resolvedParts: Array<{ partId: string; quantity: number; unitPrice: number }> = []
+    const resolvedParts: Array<{ partId: string; quantity: number; unitPrice: number; description: string }> = []
     for (const p of input.parts ?? []) {
       const part = await this.partRepo.findById(p.partId)
       if (!part) throw new NotFoundError('Peça', p.partId)
@@ -64,6 +83,7 @@ export class CreateServiceOrderUseCase {
         partId: p.partId,
         quantity: p.quantity,
         unitPrice: part.unitPrice,
+        description: part.name,
       })
     }
 
@@ -71,7 +91,7 @@ export class CreateServiceOrderUseCase {
       resolvedServices.reduce((sum, s) => sum + s.unitPrice * s.quantity, 0) +
       resolvedParts.reduce((sum, p) => sum + p.unitPrice * p.quantity, 0)
 
-    return this.serviceOrderRepo.create({
+    const order = await this.serviceOrderRepo.create({
       clientId: input.clientId,
       vehicleId: input.vehicleId,
       problemDescription: input.problemDescription,
@@ -79,5 +99,17 @@ export class CreateServiceOrderUseCase {
       parts: resolvedParts,
       quoteTotalAmount,
     })
+
+    await this.bus.publish<GerarOrcamentoCommand>(BILLING_COMMANDS_QUEUE, {
+      type: 'GerarOrcamento',
+      serviceOrderId: order.id,
+      items: [...resolvedServices, ...resolvedParts].map((i) => ({
+        description: i.description,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+      })),
+    })
+
+    return order
   }
 }

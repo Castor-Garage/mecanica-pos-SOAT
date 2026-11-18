@@ -297,13 +297,28 @@ LOG_LEVEL=info
 
 Fora de `development`, a API escreve logs em JSON (uma linha por log) com um `requestId` por requisicao. O id e reaproveitado do header `x-request-id` quando o chamador envia (ex.: API Gateway) e volta na resposta. Abertura de OS, mudancas de status e falhas de processamento ou de integracao saem como eventos de negocio (campo `event`), base para os dashboards e alertas. Catalogo de eventos e sugestoes de consultas em [`docs/observabilidade.md`](docs/observabilidade.md).
 
+## Saga Pattern e Microsservicos (Fase 4)
+
+Este repositorio (OS Service) e o **orquestrador da saga**: unico dono da
+maquina de estados da OS (`OSStatus`). `src/infrastructure/messaging/`
+publica comandos para o Billing Service (`billing-commands`) e o Execucao
+Service (`execucao-commands`) e consome os eventos deles em `os-events`
+(`sagaConsumer.ts`), decidindo a proxima transicao — incluindo a
+compensacao (`CANCELADA`) quando o pagamento ou a execucao falham.
+
+- **ADR 0006**: [`docs/adr/0006-arquitetura-microsservicos-fase4.md`](docs/adr/0006-arquitetura-microsservicos-fase4.md) — split em 3 servicos, contrato de mensageria, fluxo da saga.
+- **RFC 0004**: [`docs/rfc/0004-banco-por-servico.md`](docs/rfc/0004-banco-por-servico.md) — banco por servico e NoSQL no Billing.
+- **Rodar a saga completa localmente** (sem depender da conta AWS Academy, via LocalStack): [`docs/demo-local-saga.md`](docs/demo-local-saga.md).
+- Testes do orquestrador: `tests/unit/infrastructure/messaging/sagaConsumer.test.ts` — fluxo feliz ponta a ponta e os dois cenarios de compensacao.
+- Repositorios relacionados (Fase 4): [`mecanica-billing-SOAT`](https://github.com/Castor-Garage/mecanica-billing-SOAT), [`mecanica-execucao-SOAT`](https://github.com/Castor-Garage/mecanica-execucao-SOAT).
+
 ## Documentacao da Arquitetura (Fase 3)
 
 - **Diagrama de Componentes**: [`docs/component-diagram.mmd`](docs/component-diagram.mmd) — visao de nuvem completa (API Gateway, Lambdas, EKS, RDS, New Relic, CI/CD dos 4 repositorios).
 - **Diagramas de Sequencia**: [`docs/sequence-auth-flow.mmd`](docs/sequence-auth-flow.mmd) (autenticacao por CPF) e [`docs/sequence-os-opening.mmd`](docs/sequence-os-opening.mmd) (abertura de OS).
 - **Modelo de dominio (ER)**: [`docs/modelo-dominio.mmd`](docs/modelo-dominio.mmd) e [`docs/linguagem-ubiqua.md`](docs/linguagem-ubiqua.md).
-- **RFCs**: [`docs/rfc/`](docs/rfc/) — escolha de nuvem, banco de dados e estrategia de autenticacao.
-- **ADRs**: [`docs/adr/`](docs/adr/) — padrao de comunicacao, uso de HPA, split em 4 repositorios, RDS vs banco em cluster, cluster unico multi-namespace.
+- **RFCs**: [`docs/rfc/`](docs/rfc/) — escolha de nuvem, banco de dados, estrategia de autenticacao e banco por servico (Fase 4).
+- **ADRs**: [`docs/adr/`](docs/adr/) — padrao de comunicacao, uso de HPA, split em 4 repositorios, RDS vs banco em cluster, cluster unico multi-namespace, arquitetura de microsservicos (Fase 4).
 - Repositorios relacionados (Fase 3): [`mecanica-auth-lambda-SOAT`](https://github.com/Castor-Garage/mecanica-auth-lambda-SOAT), [`mecanica-k8s-infra-SOAT`](https://github.com/Castor-Garage/mecanica-k8s-infra-SOAT), [`mecanica-db-infra-SOAT`](https://github.com/Castor-Garage/mecanica-db-infra-SOAT).
 
 ## Principais Endpoints
